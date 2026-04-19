@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OJT Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TICKR</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
@@ -188,7 +188,10 @@ const PATHS = {
   x: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
   edit: <><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></>,
   csv: <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></>,
-  info: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></>
+  info: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></>,
+  bell: <><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></>,
+  copy: <><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></>,
+  analytics: <><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></>
 };
 const Icon = ({ name, size = 20, color = 'currentColor', strokeWidth = 2 }) =>
 <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
@@ -275,8 +278,13 @@ function App() {
   const [records, setRecords] = useState(() => LS.get('ojt_records', []).map(migrateRecord));
   const [activities, setActs] = useState(() => LS.get('ojt_activities', {}));
   const [images, setImages] = useState(() => LS.get('ojt_images', {}));
-  const [settings, setSettings] = useState(() => LS.get('ojt_settings', { name: '', company: '', requiredHours: 486, accentColor: '#3730a3', paidLunch: true }));
+  const [settings, setSettings] = useState(() => LS.get('ojt_settings', { name: '', company: '', requiredHours: 486, accentColor: '#3730a3', paidLunch: true, idleAlert: true, idleMinutes: 30, timeoutReminder: true, timeoutTime: '18:00', logReminder: true, logReminderTime: '09:00' }));
   const [tweaks, setTweaks] = useState(false);
+  const [idleAlert, setIdleAlert] = useState(false);
+  const [timeoutAlert, setTimeoutAlert] = useState(false);
+  const [logAlert, setLogAlert] = useState(false);
+  const lastActivityRef = useRef(Date.now());
+  const dismissedRef = useRef({ timeout: '', log: '' });
 
   useEffect(() => {document.documentElement.style.setProperty('--accent', settings.accentColor);}, [settings.accentColor]);
 
@@ -314,6 +322,34 @@ function App() {
   useEffect(() => LS.set('ojt_activities', activities), [activities]);
   useEffect(() => LS.set('ojt_images', images), [images]);
   useEffect(() => LS.set('ojt_settings', settings), [settings]);
+
+  useEffect(() => {
+    const update = () => { lastActivityRef.current = Date.now(); };
+    ['mousemove', 'keydown', 'touchstart', 'click'].forEach(e => document.addEventListener(e, update, { passive: true }));
+    return () => ['mousemove', 'keydown', 'touchstart', 'click'].forEach(e => document.removeEventListener(e, update));
+  }, []);
+
+  useEffect(() => {
+    const check = () => {
+      const now = new Date();
+      const today = todayKey();
+      const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      const todayRec = records.find(r => r.date === today);
+      const hasActive = todayRec && !!openSession(todayRec);
+      if (settings.idleAlert && hasActive) {
+        const idleMin = (Date.now() - lastActivityRef.current) / 60000;
+        if (idleMin >= (settings.idleMinutes || 30)) setIdleAlert(true);
+      }
+      if (settings.timeoutReminder && hasActive && timeStr >= (settings.timeoutTime || '18:00') && dismissedRef.current.timeout !== today) setTimeoutAlert(true);
+      if (settings.logReminder && dismissedRef.current.log !== today) {
+        const noLog = !todayRec || getSessions(todayRec).length === 0;
+        if (noLog && timeStr >= (settings.logReminderTime || '09:00')) setLogAlert(true);
+      }
+    };
+    check();
+    const id = setInterval(check, 60000);
+    return () => clearInterval(id);
+  }, [records, settings]);
 
   const totalHours = useMemo(() => records.reduce((s, r) => s + effectiveHours(r, settings.paidLunch), 0), [records, settings.paidLunch]);
   const todayRec = useMemo(() => records.find((r) => r.date === todayKey()), [records]);
@@ -368,6 +404,12 @@ function App() {
   }, []);
 
   const deleteRecord = useCallback((id) => setRecords((p) => p.filter((r) => r.id !== id)), []);
+  const editSession = useCallback((date, sessionId, newIn, newOut) => {
+    setRecords(p => p.map(r => {
+      if (r.date !== date) return r;
+      return { ...r, sessions: getSessions(r).map(s => s.id === sessionId ? { ...s, in: newIn, out: newOut || null } : s) };
+    }));
+  }, []);
   const updateAct = useCallback((date, text) => setActs((p) => ({ ...p, [date]: text })), []);
   const addImage = useCallback((date, b64) => setImages((p) => ({ ...p, [date]: [...(p[date] || []), b64] })), []);
   const removeImage = useCallback((date, idx) => setImages((p) => ({ ...p, [date]: (p[date] || []).filter((_, i) => i !== idx) })), []);
@@ -376,7 +418,7 @@ function App() {
   const desktop = useDesktop();
   const PAGES = { home: Home, logs: Logs, charts: Charts, settings: Settings };
   const Page = PAGES[screen] || Home;
-  const sharedProps = { screen, setScreen, records, totalHours, todayRec, timeIn, timeOut, addRecord, deleteRecord, addSession, deleteSession, activities, updateAct, images, addImage, removeImage, settings, updateSettings, desktop };
+  const sharedProps = { screen, setScreen, records, totalHours, todayRec, timeIn, timeOut, addRecord, deleteRecord, addSession, deleteSession, editSession, activities, updateAct, images, addImage, removeImage, settings, updateSettings, desktop };
 
   return (
     <div className="app-shell">
@@ -388,6 +430,16 @@ function App() {
       </div>
       <BottomNav screen={screen} setScreen={setScreen} />
       {tweaks && <TweaksPanel records={records} setRecords={setRecords} setActs={setActs} setImages={setImages} settings={settings} updateSettings={updateSettings} onClose={() => setTweaks(false)} />}
+      {idleAlert && <IdleModal
+        idleMinutes={Math.floor((Date.now() - lastActivityRef.current) / 60000)}
+        onDismiss={() => { setIdleAlert(false); lastActivityRef.current = Date.now(); }}
+        onEndSession={() => { timeOut(); setIdleAlert(false); lastActivityRef.current = Date.now(); }} />}
+      {timeoutAlert && <AlertBanner icon="⏰" title="Don't forget to Time Out!" sub={`It's past ${settings.timeoutTime || '18:00'} — your session is still running.`}
+        actionLabel="Time Out" onAction={() => { timeOut(); setTimeoutAlert(false); dismissedRef.current.timeout = todayKey(); }}
+        onDismiss={() => { setTimeoutAlert(false); dismissedRef.current.timeout = todayKey(); }} />}
+      {logAlert && !timeoutAlert && !idleAlert && <AlertBanner icon="📋" title="Don't forget to log today!" sub="Tap to start your session now."
+        actionLabel="Time In" onAction={() => { timeIn(); setLogAlert(false); dismissedRef.current.log = todayKey(); setScreen('home'); }}
+        onDismiss={() => { setLogAlert(false); dismissedRef.current.log = todayKey(); }} />}
     </div>);
 
 }
@@ -404,7 +456,7 @@ function SideNav({ screen, setScreen, settings, totalHours }) {
             <Icon name="clock" size={17} color="white" />
           </div>
           <div>
-            <p style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>OJT Tracker</p>
+            <p style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>Tickr</p>
             <p style={{ fontSize: 11, color: 'var(--text3)' }}>Daily Time Record</p>
           </div>
         </div>
@@ -455,8 +507,8 @@ function SideNav({ screen, setScreen, settings, totalHours }) {
 // ─── Bottom Nav (mobile only) ─────────────────────────────────────────────────
 const NAV = [
 { id: 'home', label: 'Home', icon: 'home' },
-{ id: 'logs', label: 'Logs', icon: 'logs' },
-{ id: 'charts', label: 'Charts', icon: 'charts' },
+{ id: 'logs', label: 'Activity', icon: 'logs' },
+{ id: 'charts', label: 'Report', icon: 'charts' },
 { id: 'settings', label: 'Settings', icon: 'settings' }];
 
 function BottomNav({ screen, setScreen }) {
@@ -592,7 +644,7 @@ function ContributionChart({ records, paidLunch = true }) {
 }
 
 // ─── HOME ─────────────────────────────────────────────────────────────────────
-function Home({ records, totalHours, todayRec, timeIn, timeOut, settings, setScreen, desktop }) {
+function Home({ records, totalHours, todayRec, timeIn, timeOut, addRecord, settings, setScreen, desktop }) {
   const now = new Date();
   const pct = Math.min(totalHours / settings.requiredHours * 100, 100);
   const remaining = Math.max(settings.requiredHours - totalHours, 0);
@@ -692,7 +744,7 @@ function Home({ records, totalHours, todayRec, timeIn, timeOut, settings, setScr
       }
     }
     return (
-      <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', height: '100%', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <h2 style={{ fontSize: 15, fontWeight: 700 }}>This Week</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -731,6 +783,37 @@ function Home({ records, totalHours, todayRec, timeIn, timeOut, settings, setScr
   })();
 
 
+  const lastWorked = useMemo(() => records.filter(r => r.date < todayKey() && getSessions(r).filter(s => s.in && s.out).length > 0).sort((a, b) => b.date.localeCompare(a.date))[0], [records]);
+  const dupYesterday = () => {
+    if (!lastWorked) return;
+    const today = todayKey();
+    const sessions = getSessions(lastWorked).filter(s => s.in && s.out).map(s => {
+      const iD = new Date(s.in), oD = new Date(s.out);
+      const pad = n => String(n).padStart(2,'0');
+      return { id: Date.now() + Math.random(), in: `${today}T${pad(iD.getHours())}:${pad(iD.getMinutes())}:00`, out: `${today}T${pad(oD.getHours())}:${pad(oD.getMinutes())}:00` };
+    });
+    addRecord({ date: today, id: Date.now(), manual: true, sessions });
+  };
+  const noTodaySession = !todayRec || getSessions(todayRec).length === 0;
+
+  const EstCard = (() => {
+    if (remaining <= 0) return null;
+    const workedRecs = records.filter(r => effectiveHours(r, settings.paidLunch) > 0);
+    if (workedRecs.length < 2) return null;
+    const avg = workedRecs.reduce((s, r) => s + effectiveHours(r, settings.paidLunch), 0) / workedRecs.length;
+    const daysNeeded = Math.ceil(remaining / avg);
+    const est = new Date(); let added = 0;
+    while (added < daysNeeded) { est.setDate(est.getDate() + 1); if (est.getDay() !== 0 && est.getDay() !== 6) added++; }
+    const estStr = est.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    return (
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)' }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Estimated Completion</p>
+        <p style={{ fontSize: 21, fontWeight: 700, color: 'var(--accent)' }}>{estStr}</p>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>{daysNeeded} work day{daysNeeded !== 1 ? 's' : ''} · ~{avg.toFixed(1)} hrs/day avg · {fmtH(remaining)} left</p>
+      </div>
+    );
+  })();
+
   return (
     <div style={{ paddingBottom: 12 }} className="fade-in">
       {/* Header */}
@@ -738,7 +821,7 @@ function Home({ records, totalHours, todayRec, timeIn, timeOut, settings, setScr
         <div>
           <p style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
           <h1 style={{ fontSize: desktop ? 28 : 23, fontWeight: 700, marginTop: 2 }}>{greet()}{settings.name ? `, ${settings.name.split(' ')[0]}` : ''} 👋</h1>
-          <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 1 }}>{settings.company || 'OJT Tracker'}</p>
+          <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 1 }}>{settings.company || 'TICKR'}</p>
         </div>
         {!desktop && <button onClick={() => setScreen('settings')} style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="user" size={18} color="var(--accent)" />
@@ -746,22 +829,59 @@ function Home({ records, totalHours, todayRec, timeIn, timeOut, settings, setScr
       </div>
 
       {desktop ?
-      <div style={{ padding: '18px 20px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: '18px 20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Row 1: Hero (left) + Week (right) — equal height */}
+          <div style={{ display: 'grid', gridTemplateColumns: '5fr 4fr', gap: 16, alignItems: 'stretch' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {HeroCard}
-              {SummaryCards}
+              {noTodaySession && lastWorked && (
+                <button onClick={dupYesterday} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 16px', borderRadius: 12, background: 'var(--surface)', border: '1.5px dashed var(--accent)', color: 'var(--accent)', fontWeight: 600, fontSize: 13, width: '100%' }}>
+                  <Icon name="copy" size={15} color="var(--accent)" />
+                  Copy {new Date(lastWorked.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}'s schedule
+                </button>
+              )}
             </div>
-            <div>{WeekCard}</div>
+            <div style={{ height: '100%' }}>
+              {WeekCard}
+            </div>
           </div>
+          {/* Row 2: Summary stats (3-col) + Est completion */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 14, alignItems: 'stretch' }}>
+            {[
+              { label: 'Rendered', value: fmtH(totalHours), bg: 'var(--accent-light)', c: 'var(--accent)' },
+              { label: 'Required', value: fmtH(settings.requiredHours), bg: 'var(--emerald-light)', c: 'var(--emerald)' },
+              { label: 'Remaining', value: fmtH(remaining), bg: 'var(--amber-light)', c: 'var(--amber)' },
+            ].map(x => (
+              <div key={x.label} style={{ background: x.bg, borderRadius: 'var(--r)', padding: '16px 14px', textAlign: 'center' }}>
+                <p style={{ fontSize: 22, fontWeight: 700, color: x.c }}>{x.value}</p>
+                <p style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500, marginTop: 3 }}>{x.label}</p>
+              </div>
+            ))}
+            {EstCard
+              ? <div style={{ minWidth: 200 }}>{EstCard}</div>
+              : <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px 14px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 160 }}>
+                  <p style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center' }}>Log more days to see ETA</p>
+                </div>
+            }
+          </div>
+          {/* Row 3: Contribution chart full width */}
           <ContributionChart records={records} paidLunch={settings.paidLunch} />
         </div> :
 
       <>
           <div style={{ margin: '18px 20px 0' }}>{HeroCard}</div>
-          <div style={{ padding: '14px 20px 0' }}>{SummaryCards}</div>
-          <div style={{ margin: '14px 20px 0' }}>{WeekCard}</div>
-          <div style={{ margin: '14px 20px 0' }}><ContributionChart records={records} paidLunch={settings.paidLunch} /></div>
+          {noTodaySession && lastWorked && (
+            <div style={{ margin: '12px 20px 0' }}>
+              <button onClick={dupYesterday} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 16px', borderRadius: 12, background: 'var(--surface)', border: '1.5px dashed var(--accent)', color: 'var(--accent)', fontWeight: 600, fontSize: 13, width: '100%' }}>
+                <Icon name="copy" size={15} color="var(--accent)" />
+                Copy {new Date(lastWorked.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}'s schedule
+              </button>
+            </div>
+          )}
+          <div style={{ margin: '16px 20px 0' }}>{SummaryCards}</div>
+          <div style={{ margin: '16px 20px 0' }}>{WeekCard}</div>
+          {EstCard && <div style={{ margin: '16px 20px 0' }}>{EstCard}</div>}
+          <div style={{ margin: '16px 20px 24px' }}><ContributionChart records={records} paidLunch={settings.paidLunch} /></div>
         </>
       }
     </div>);
@@ -769,8 +889,9 @@ function Home({ records, totalHours, todayRec, timeIn, timeOut, settings, setScr
 }
 
 // ─── LOGS ─────────────────────────────────────────────────────────────────────
-function LogDetail({ date, record, activities, updateAct, images, addImage, removeImage, addSession, deleteSession, deleteRecord, settings, desktop, onClose, setLightbox }) {
+function LogDetail({ date, record, activities, updateAct, images, addImage, removeImage, addSession, deleteSession, editSession, deleteRecord, settings, desktop, onClose, setLightbox }) {
   const [showAddSession, setShowAddSession] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
   const [confirmSession, setConfirmSession] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileRef = useRef();
@@ -830,6 +951,7 @@ function LogDetail({ date, record, activities, updateAct, images, addImage, remo
                     <div><p style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>OUT</p><p style={{ fontSize: 13, fontWeight: 700, color: s.out ? 'var(--text)' : 'var(--amber)' }}>{s.out ? fmt12(s.out) : 'Active'}</p></div>
                     {sHrs !== null && <div><p style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>HRS</p><p style={{ fontSize: 13, fontWeight: 700 }}>{fmtH(sHrs)}</p></div>}
                   </div>
+                  <button onClick={() => setEditingSession(s)} style={{ color: 'var(--accent)', padding: 4, borderRadius: 6 }}><Icon name="edit" size={13} /></button>
                   <button onClick={() => setConfirmSession(s.id)} style={{ color: 'var(--text3)', padding: 4, borderRadius: 6 }}><Icon name="trash" size={13} /></button>
                 </div>
               );
@@ -879,6 +1001,7 @@ function LogDetail({ date, record, activities, updateAct, images, addImage, remo
   const subModals = (
     <>
       {showAddSession && record && <AddSessionModal date={date} onClose={() => setShowAddSession(false)} onSave={(sIn, sOut) => { addSession(date, sIn, sOut); setShowAddSession(false); }} existingSessions={sessions} />}
+      {editingSession && <EditSessionModal session={editingSession} date={date} onClose={() => setEditingSession(null)} onSave={(newIn, newOut) => { editSession(date, editingSession.id, newIn, newOut); setEditingSession(null); }} />}
       {confirmSession && <Confirm msg="Delete this session?" sub="This cannot be undone." onOk={() => { deleteSession(date, confirmSession); setConfirmSession(null); }} onCancel={() => setConfirmSession(null)} />}
       {confirmDelete && record && <Confirm msg="Delete this record?" sub="All sessions, notes, and photos will be removed." onOk={() => { deleteRecord(record.id); onClose(); }} onCancel={() => setConfirmDelete(false)} />}
     </>
@@ -909,10 +1032,12 @@ function LogDetail({ date, record, activities, updateAct, images, addImage, remo
   );
 }
 
-function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, images, addImage, removeImage, activities, updateAct, settings, desktop }) {
+function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, editSession, images, addImage, removeImage, activities, updateAct, settings, desktop }) {
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState(null);
   const [lightbox, setLightbox] = useState(null);
+
+  const [filterMonth, setFilterMonth] = useState('all');
 
   const sorted = useMemo(() => [...records].sort((a, b) => b.date.localeCompare(a.date)), [records]);
   const grouped = useMemo(() => {
@@ -924,11 +1049,13 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, ima
     });
     return groups;
   }, [sorted]);
+  const months = useMemo(() => [...new Set(sorted.map(r => r.date.slice(0, 7)))], [sorted]);
+  const filtered = useMemo(() => filterMonth === 'all' ? grouped : grouped.filter(g => g.month === filterMonth), [grouped, filterMonth]);
 
   const selectedRecord = selected ? records.find(r => r.date === selected) : null;
   const DOT = { complete: 'var(--emerald)', pending: 'var(--amber)', absent: 'var(--border)', manual: 'var(--accent)' };
 
-  const renderList = (compact) => grouped.map(({ month, recs }) => (
+  const renderList = (compact) => filtered.map(({ month, recs }) => (
     <div key={month} style={{ marginBottom: 20 }}>
       <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, padding: compact ? '0' : '0 20px' }}>
         {new Date(month + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
@@ -988,6 +1115,20 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, ima
         </button>
       </div>
 
+      {months.length > 1 && (
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '0 20px 14px', scrollbarWidth: 'none' }}>
+          {['all', ...months].map(m => (
+            <button key={m} onClick={() => setFilterMonth(m)}
+              style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600,
+                background: filterMonth === m ? 'var(--accent)' : 'var(--surface)',
+                color: filterMonth === m ? 'white' : 'var(--text2)',
+                border: `1.5px solid ${filterMonth === m ? 'var(--accent)' : 'var(--border)'}` }}>
+              {m === 'all' ? 'All' : new Date(m + '-01T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+            </button>
+          ))}
+        </div>
+      )}
+
       {sorted.length === 0 ? (
         <div style={{ margin: '20px', textAlign: 'center', padding: '48px 24px', background: 'var(--surface)', borderRadius: 'var(--r)', border: '1px solid var(--border)' }}>
           <Icon name="logs" size={40} color="var(--text3)" />
@@ -1001,7 +1142,7 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, ima
             {selected ? (
               <LogDetail date={selected} record={selectedRecord} activities={activities} updateAct={updateAct}
                 images={images} addImage={addImage} removeImage={removeImage}
-                addSession={addSession} deleteSession={deleteSession} deleteRecord={deleteRecord}
+                addSession={addSession} deleteSession={deleteSession} editSession={editSession} deleteRecord={deleteRecord}
                 settings={settings} desktop={true} onClose={() => setSelected(null)} setLightbox={setLightbox} />
             ) : (
               <div style={{ textAlign: 'center', padding: '60px 24px', background: 'var(--surface)', borderRadius: 'var(--r)', border: '1px solid var(--border)' }}>
@@ -1017,7 +1158,7 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, ima
           {selected && (
             <LogDetail date={selected} record={selectedRecord} activities={activities} updateAct={updateAct}
               images={images} addImage={addImage} removeImage={removeImage}
-              addSession={addSession} deleteSession={deleteSession} deleteRecord={deleteRecord}
+              addSession={addSession} deleteSession={deleteSession} editSession={editSession} deleteRecord={deleteRecord}
               settings={settings} desktop={false} onClose={() => setSelected(null)} setLightbox={setLightbox} />
           )}
         </>
@@ -1033,6 +1174,62 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, ima
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Idle / Alert UI ─────────────────────────────────────────────────────────
+function IdleModal({ idleMinutes, onDismiss, onEndSession }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 20, padding: '28px 24px', maxWidth: 320, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.35)', textAlign: 'center' }}>
+        <div style={{ fontSize: 44, marginBottom: 12 }}>💤</div>
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Still there?</h2>
+        <p style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 22, lineHeight: 1.6 }}>
+          You've been inactive for <strong>{idleMinutes} min</strong> with a session still running.
+        </p>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onEndSession} style={{ flex: 1, padding: 13, borderRadius: 10, background: 'var(--rose)', color: 'white', fontWeight: 700, fontSize: 14 }}>End Session</button>
+          <button onClick={onDismiss} style={{ flex: 1, padding: 13, borderRadius: 10, background: 'var(--bg)', color: 'var(--text)', fontWeight: 600, fontSize: 14, border: '1.5px solid var(--border)' }}>Keep Going</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AlertBanner({ icon, title, sub, actionLabel, onAction, onDismiss }) {
+  return (
+    <div style={{ position: 'fixed', bottom: 68, left: 0, right: 0, zIndex: 900, padding: '0 14px 8px' }}>
+      <div style={{ background: 'var(--amber)', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.25)' }}>
+        <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'white' }}>{title}</p>
+          {sub && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 1 }}>{sub}</p>}
+        </div>
+        {actionLabel && <button onClick={onAction} style={{ padding: '7px 12px', borderRadius: 8, background: 'white', color: 'var(--amber)', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{actionLabel}</button>}
+        <button onClick={onDismiss} style={{ padding: 4, flexShrink: 0 }}><Icon name="x" size={14} color="white" /></button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit Session Modal ───────────────────────────────────────────────────────
+function EditSessionModal({ session, date, onClose, onSave }) {
+  const toTimeStr = iso => { if (!iso) return ''; const d = new Date(iso); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+  const [tIn, setTIn] = useState(toTimeStr(session.in));
+  const [tOut, setTOut] = useState(toTimeStr(session.out));
+  const [err, setErr] = useState('');
+  const save = () => {
+    if (!tIn) { setErr('Time In is required.'); return; }
+    if (tOut && tOut <= tIn) { setErr('Time Out must be after Time In.'); return; }
+    onSave(parseTimeToISO(date, tIn), tOut ? parseTimeToISO(date, tOut) : null);
+  };
+  return (
+    <Modal title="Edit Session" onClose={onClose}>
+      <Field label="Time In"><input type="time" value={tIn} onChange={e => setTIn(e.target.value)} style={inputStyle} /></Field>
+      <Field label="Time Out (optional)"><input type="time" value={tOut} onChange={e => setTOut(e.target.value)} style={inputStyle} /></Field>
+      {err && <p style={{ fontSize: 13, color: 'var(--rose)', marginBottom: 12, padding: '8px 12px', background: 'var(--rose-light)', borderRadius: 8 }}>{err}</p>}
+      <button onClick={save} style={{ width: '100%', padding: 14, borderRadius: 10, background: 'var(--accent)', color: 'white', fontWeight: 700, fontSize: 15 }}>Save Changes</button>
+    </Modal>
   );
 }
 
@@ -1174,7 +1371,7 @@ function AddSessionModal({date, onClose, onSave, existingSessions}) {
   );
 }
 
-function Charts({ records, totalHours, settings, desktop }) {
+function Charts({ records, totalHours, settings, desktop, activities, addRecord, updateAct }) {
   const [view, setView] = useState('daily');
 
   const sorted = [...records].filter((r) => effectiveHours(r, settings.paidLunch) > 0).sort((a, b) => a.date.localeCompare(b.date));
@@ -1212,6 +1409,21 @@ function Charts({ records, totalHours, settings, desktop }) {
   const pct = Math.min(totalHours / settings.requiredHours * 100, 100);
   const avgHours = sorted.length > 0 ? totalHours / sorted.length : 0;
   const daysLeft = sorted.length > 0 ? Math.ceil(Math.max(settings.requiredHours - totalHours, 0) / avgHours) : 0;
+  const streak = useMemo(() => {
+    let s = 0; const tod = todayKey(); let d = new Date();
+    while (true) { const k=d.toISOString().slice(0,10); if(k>tod){d.setDate(d.getDate()-1);continue;} const r=records.find(r=>r.date===k); if(!r||effectiveHours(r,settings.paidLunch)===0)break; s++; d.setDate(d.getDate()-1); }
+    return s;
+  }, [records, settings.paidLunch]);
+
+  const thisWeekSummary = useMemo(() => {
+    const now = new Date(); const dow = now.getDay();
+    const monday = new Date(now); monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+    const days = Array.from({length:7}, (_,i) => { const d=new Date(monday); d.setDate(monday.getDate()+i); return d.toISOString().slice(0,10); });
+    const worked = days.map(k => { const r = records.find(r=>r.date===k); const h=r?effectiveHours(r,settings.paidLunch):0; return {date:k,hrs:h,rec:r}; });
+    const total = worked.reduce((s,d)=>s+d.hrs,0);
+    const workedDays = worked.filter(d=>d.hrs>0).length;
+    return { days: worked, total, workedDays, avg: workedDays>0?total/workedDays:0 };
+  }, [records, settings.paidLunch]);
 
   return (
     <div style={{ paddingBottom: 12 }} className="fade-in">
@@ -1221,10 +1433,11 @@ function Charts({ records, totalHours, settings, desktop }) {
       </div>
 
       {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(4,1fr)' : '1fr 1fr', gap: 10, padding: '0 20px 16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(5,1fr)' : '1fr 1fr', gap: 10, padding: '0 20px 16px' }}>
         {[
         { label: 'Days Logged', value: sorted.length, sub: 'days with hours' },
         { label: 'Avg per Day', value: fmtH(avgHours), sub: 'average daily' },
+        { label: 'Streak', value: streak > 0 ? `🔥 ${streak}d` : '—', sub: streak > 0 ? 'days in a row' : 'no streak yet' },
         { label: 'Est. Days Left', value: daysLeft || '—', sub: daysLeft ? 'at current pace' : 'start logging' },
         { label: 'Completion', value: `${pct.toFixed(1)}%`, sub: `of ${settings.requiredHours}h required` }].
         map((s) =>
@@ -1237,8 +1450,8 @@ function Charts({ records, totalHours, settings, desktop }) {
       </div>
 
       {/* Tab switcher */}
-      <div style={{ display: 'flex', gap: 6, padding: '0 20px 14px' }}>
-        {[{ id: 'daily', label: 'Daily (14d)' }, { id: 'weekly', label: 'Weekly' }, { id: 'cumulative', label: 'Progress' }].map((t) =>
+      <div style={{ display: 'flex', gap: 6, padding: '0 20px 14px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {[{ id: 'daily', label: 'Daily (14d)' }, { id: 'weekly', label: 'Weekly' }, { id: 'cumulative', label: 'Progress' }, { id: 'summary', label: 'This Week' }].map((t) =>
         <button key={t.id} onClick={() => setView(t.id)}
         style={{ padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600,
           background: view === t.id ? 'var(--accent)' : 'var(--surface)',
@@ -1255,6 +1468,39 @@ function Charts({ records, totalHours, settings, desktop }) {
         {view === 'daily' && <BarChart data={barData} yKey="hours" labelKey="label" title="Hours per day (last 14 days)" />}
         {view === 'weekly' && (weekData.length > 0 ? <BarChart data={weekData} yKey="hours" labelKey="label" title="Hours per week" /> : <EmptyChart msg="Need at least 1 week of data" />)}
         {view === 'cumulative' && (lineData.length > 1 ? <LineChart data={lineData} required={settings.requiredHours} title="Cumulative hours" /> : <EmptyChart msg="Need at least 2 records" />)}
+        {view === 'summary' && (() => {
+          const ws = thisWeekSummary;
+          const DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+          const maxH = Math.max(...ws.days.map(d=>d.hrs), 1);
+          const today = todayKey();
+          return (
+            <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+                {[{label:'Total',val:fmtH(ws.total)},{label:'Days Worked',val:ws.workedDays},{label:'Avg/Day',val:fmtH(ws.avg)}].map(s=>(
+                  <div key={s.label} style={{flex:1,background:'var(--bg)',borderRadius:10,padding:'10px 12px',textAlign:'center'}}>
+                    <p style={{fontSize:17,fontWeight:700,color:'var(--accent)'}}>{s.val}</p>
+                    <p style={{fontSize:10,color:'var(--text3)',marginTop:2,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.04em'}}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {ws.days.map((d,i)=>{
+                  const isFut=d.date>today, isToday=d.date===today;
+                  const barW=d.hrs>0?Math.round(d.hrs/maxH*100):0;
+                  return (
+                    <div key={d.date} style={{display:'flex',alignItems:'center',gap:10,opacity:isFut?0.35:1}}>
+                      <span style={{fontSize:12,fontWeight:700,color:isToday?'var(--accent)':'var(--text3)',width:28,flexShrink:0}}>{DOW[i]}</span>
+                      <div style={{flex:1,height:24,background:'var(--bg)',borderRadius:6,overflow:'hidden',position:'relative'}}>
+                        <div style={{height:'100%',width:`${barW}%`,background:isToday?'var(--accent)':d.hrs>0?'var(--accent-mid)':'transparent',borderRadius:6,transition:'width 0.6s ease'}} />
+                        {d.hrs>0&&<span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:11,fontWeight:700,color:isToday?'white':'var(--text2)'}}>{fmtH(d.hrs)}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Progress bar */}
@@ -1268,6 +1514,140 @@ function Charts({ records, totalHours, settings, desktop }) {
         </div>
         <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{fmtH(Math.max(settings.requiredHours - totalHours, 0))} remaining · {pct.toFixed(1)}% complete</p>
       </div>
+
+      {/* Most Productive Weekday */}
+      {sorted.length >= 3 && (() => {
+        const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        const buckets = Array.from({length:7}, () => ({ total:0, count:0 }));
+        sorted.forEach(r => { const d = new Date(r.date+'T00:00:00').getDay(); const h = effectiveHours(r, settings.paidLunch); buckets[d].total += h; buckets[d].count++; });
+        const avgs = buckets.map((b,i) => ({ label: DOW[i], avg: b.count > 0 ? b.total/b.count : 0, count: b.count }));
+        const maxAvg = Math.max(...avgs.map(a => a.avg), 0.1);
+        const best = avgs.reduce((b,a) => a.avg > b.avg ? a : b, avgs[0]);
+        return (
+          <div style={{ margin: '14px 20px 0', background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <p style={{ fontSize: 14, fontWeight: 700 }}>Most Productive Day</p>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-light)', padding: '3px 10px', borderRadius: 99 }}>{best.label} · {fmtH(best.avg)} avg</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 56 }}>
+              {avgs.map(a => (
+                <div key={a.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                  <div style={{ width: '100%', height: a.avg > 0 ? Math.max(a.avg/maxAvg*44,4) : 3, borderRadius: 4, background: a.label === best.label ? 'var(--accent)' : a.avg > 0 ? 'var(--accent-mid)' : 'var(--border)', transition: 'height 0.5s ease', alignSelf: 'flex-end' }} />
+                  <span style={{ fontSize: 9, fontWeight: 700, color: a.label === best.label ? 'var(--accent)' : 'var(--text3)', textTransform: 'uppercase' }}>{a.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Monthly Summary */}
+      {sorted.length > 0 && (() => {
+        const months = {};
+        sorted.forEach(r => { const m = r.date.slice(0,7); if (!months[m]) months[m] = { total:0, days:0 }; months[m].total += effectiveHours(r, settings.paidLunch); months[m].days++; });
+        const rows = Object.entries(months).sort((a,b) => b[0].localeCompare(a[0]));
+        return (
+          <div style={{ margin: '14px 20px 0', background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)' }}>
+            <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Monthly Summary</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden', borderRadius: 10, border: '1px solid var(--border)' }}>
+              {rows.map(([m, d], i) => (
+                <div key={m} style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', background: i % 2 === 0 ? 'var(--bg)' : 'transparent', gap: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>{new Date(m+'-01T00:00:00').toLocaleDateString('en-US', {month:'long', year:'numeric'})}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text2)', width: 50, textAlign: 'right' }}>{d.days}d</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', width: 54, textAlign: 'right' }}>{fmtH(d.total)}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text3)', width: 60, textAlign: 'right' }}>~{fmtH(d.total/d.days)}/day</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Data Portability */}
+      {(() => {
+        const downloadCSV = () => {
+          const rows = [['Date','Day','Session #','Time In','Time Out','Session Hours','Total Day Hours','Status','Notes']];
+          [...records].sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
+            const sessions=getSessions(r), totalH=effectiveHours(r, settings.paidLunch);
+            const status=sessions.length===0?'Absent':openSession(r)?'Active':'Complete';
+            if(sessions.length===0){
+              rows.push([fmtDate(r.date),fmtDay(r.date),'—','—','—','0',totalH.toFixed(2),status,(activities[r.date]||'').replace(/\n/g,' | ')]);
+            } else {
+              sessions.forEach((s,i)=>{
+                const sH=s.in&&s.out?msToHours(new Date(s.out)-new Date(s.in)):0;
+                rows.push([fmtDate(r.date),fmtDay(r.date),i+1,fmt12(s.in),s.out?fmt12(s.out):'Active',sH.toFixed(2),i===0?totalH.toFixed(2):'',i===0?status:'',i===0?(activities[r.date]||'').replace(/\n/g,' | '):'']);
+              });
+            }
+          });
+          rows.push(['','','','','TOTAL','',records.reduce((s,r)=>s+effectiveHours(r, settings.paidLunch),0).toFixed(2),'','']);
+          const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+          const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`OJT_DTR_${todayKey()}.csv`; a.click();
+        };
+        const downloadTemplate = () => {
+          const csv=['Date,Time In,Time Out,Notes','2026-04-19,08:00,17:00,First day at office','2026-04-20,08:30,17:30,','2026-04-21,09:00,18:00,Attended orientation'].join('\n');
+          const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='OJT_DTR_Template.csv'; a.click();
+        };
+        const importCSV = (e) => {
+          const file=e.target.files[0]; if(!file) return;
+          const reader=new FileReader();
+          reader.onload=(ev)=>{
+            const lines=ev.target.result.split(/\r?\n/).filter(l=>l.trim());
+            const header=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim().toLowerCase());
+            const col=(row,names)=>{const i=names.map(n=>header.indexOf(n)).find(i=>i>=0);return i>=0?row[i]:'';};
+            const parseCell=c=>c.replace(/^"|"$/g,'').trim();
+            const toISO=(dateStr,timeStr)=>{
+              if(!dateStr||!timeStr||timeStr==='—'||timeStr==='Active') return null;
+              const d=dateStr.replace(/\//g,'-');
+              const t12=timeStr.match(/(\d+):(\d+)\s*(am|pm)/i);
+              if(t12){let h=parseInt(t12[1]),m=parseInt(t12[2]);if(t12[3].toLowerCase()==='pm'&&h!==12)h+=12;if(t12[3].toLowerCase()==='am'&&h===12)h=0;return `${d}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;}
+              const t24=timeStr.match(/(\d{1,2}):(\d{2})/);
+              if(t24) return `${d}T${String(t24[1]).padStart(2,'0')}:${t24[2]}:00`;
+              return null;
+            };
+            const byDate={};
+            for(let i=1;i<lines.length;i++){
+              const row=lines[i].split(',').map(parseCell);
+              const dateRaw=col(row,['date']); if(!dateRaw||dateRaw===''||dateRaw==='TOTAL') continue;
+              const dateKey=dateRaw.replace(/\//g,'-').slice(0,10); if(!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+              if(!byDate[dateKey]) byDate[dateKey]={date:dateKey,sessions:[],note:''};
+              const inISO=toISO(dateKey,col(row,['time in','timein'])), outISO=toISO(dateKey,col(row,['time out','timeout']));
+              if(inISO) byDate[dateKey].sessions.push({id:Date.now()+'_'+i,in:inISO,out:outISO||null});
+              const note=col(row,['notes','note']); if(note) byDate[dateKey].note=note;
+            }
+            const toImport=Object.values(byDate);
+            if(!toImport.length){alert('No valid records found in CSV.');return;}
+            toImport.forEach(r=>{addRecord({date:r.date,id:Date.now(),manual:true,sessions:r.sessions});if(r.note)updateAct(r.date,r.note);});
+            alert(`Imported ${toImport.length} record(s) successfully.`);
+          };
+          reader.readAsText(file); e.target.value='';
+        };
+        return (
+          <div style={{ margin: '14px 20px 0', background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)' }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>Data Portability</p>
+            <button onClick={downloadCSV} disabled={records.length === 0}
+              style={{ width: '100%', padding: 13, borderRadius: 10, background: records.length === 0 ? 'var(--border)' : 'var(--accent-light)', color: records.length === 0 ? 'var(--text3)' : 'var(--accent)', fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: records.length === 0 ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+              <Icon name="csv" size={17} color={records.length === 0 ? 'var(--text3)' : 'var(--accent)'} />
+              Download CSV ({records.length} records)
+            </button>
+            <label style={{ width: '100%', padding: 13, borderRadius: 10, background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', marginBottom: 10, boxSizing: 'border-box' }}>
+              <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Import CSV
+              <input type="file" accept=".csv,text/csv" onChange={importCSV} style={{ display: 'none' }} />
+            </label>
+            <button onClick={downloadTemplate}
+              style={{ width: '100%', padding: 13, borderRadius: 10, background: 'var(--emerald-light)', color: 'var(--emerald)', fontWeight: 600, fontSize: 14, border: '1.5px solid var(--emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
+              <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/>
+              </svg>
+              Download Data Entry Template
+            </button>
+            <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8, textAlign: 'center' }}>Use the template to fill in your records, then import it here.</p>
+          </div>
+        );
+      })()}
+
     </div>);
 
 }
@@ -1365,7 +1745,7 @@ function LineChart({ data, required, title }) {
 }
 
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
-function Settings({ settings, updateSettings, records, activities, images, setScreen, addRecord, updateAct }) {
+function Settings({ settings, updateSettings, records, setScreen }) {
   const [name, setName] = useState(settings.name);
   const [company, setCompany] = useState(settings.company);
   const [reqHrs, setReqHrs] = useState(String(settings.requiredHours));
@@ -1380,89 +1760,6 @@ function Settings({ settings, updateSettings, records, activities, images, setSc
     setSaved(true);setTimeout(() => setSaved(false), 2000);
   };
 
-  const downloadCSV = () => {
-    const rows = [['Date','Day','Session #','Time In','Time Out','Session Hours','Total Day Hours','Status','Notes']];
-    [...records].sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
-      const sessions=getSessions(r), totalH=effectiveHours(r, settings.paidLunch);
-      const status=sessions.length===0?'Absent':openSession(r)?'Active':'Complete';
-      if(sessions.length===0){
-        rows.push([fmtDate(r.date),fmtDay(r.date),'—','—','—','0',totalH.toFixed(2),status,(activities[r.date]||'').replace(/\n/g,' | ')]);
-      } else {
-        sessions.forEach((s,i)=>{
-          const sH=s.in&&s.out?msToHours(new Date(s.out)-new Date(s.in)):0;
-          rows.push([fmtDate(r.date),fmtDay(r.date),i+1,fmt12(s.in),s.out?fmt12(s.out):'Active',sH.toFixed(2),i===0?totalH.toFixed(2):'',i===0?status:'',i===0?(activities[r.date]||'').replace(/\n/g,' | '):'']);
-        });
-      }
-    });
-    rows.push(['','','','','TOTAL','',records.reduce((s,r)=>s+effectiveHours(r, settings.paidLunch),0).toFixed(2),'','']);
-    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `OJT_DTR_${todayKey()}.csv`;a.click();
-  };
-
-  const downloadTemplate = () => {
-    const csv = [
-      'Date,Time In,Time Out,Notes',
-      '2026-04-19,08:00,17:00,First day at office',
-      '2026-04-20,08:30,17:30,',
-      '2026-04-21,09:00,18:00,Attended orientation',
-    ].join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = 'OJT_DTR_Template.csv'; a.click();
-  };
-
-  const importCSV = (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const lines = ev.target.result.split(/\r?\n/).filter(l => l.trim());
-      const header = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
-      const col = (row, names) => { const i = names.map(n => header.indexOf(n)).find(i => i >= 0); return i >= 0 ? row[i] : ''; };
-      const parseCell = c => c.replace(/^"|"$/g,'').trim();
-      const toISO = (dateStr, timeStr) => {
-        if (!dateStr || !timeStr || timeStr === '—' || timeStr === 'Active') return null;
-        const d = dateStr.replace(/\//g,'-');
-        const t12 = timeStr.match(/(\d+):(\d+)\s*(am|pm)/i);
-        if (t12) {
-          let h = parseInt(t12[1]), m = parseInt(t12[2]);
-          if (t12[3].toLowerCase()==='pm' && h!==12) h+=12;
-          if (t12[3].toLowerCase()==='am' && h===12) h=0;
-          return `${d}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
-        }
-        const t24 = timeStr.match(/(\d{1,2}):(\d{2})/);
-        if (t24) return `${d}T${String(t24[1]).padStart(2,'0')}:${t24[2]}:00`;
-        return null;
-      };
-      const byDate = {};
-      for (let i = 1; i < lines.length; i++) {
-        const raw = lines[i].split(','); const row = raw.map(parseCell);
-        const dateRaw = col(row, ['date']);
-        if (!dateRaw || dateRaw === '' || dateRaw === 'TOTAL') continue;
-        const dateKey = dateRaw.replace(/\//g,'-').slice(0,10);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
-        const timeIn  = col(row, ['time in','timein']);
-        const timeOut = col(row, ['time out','timeout']);
-        if (!byDate[dateKey]) byDate[dateKey] = { date: dateKey, sessions: [], note: '' };
-        const inISO  = toISO(dateKey, timeIn);
-        const outISO = toISO(dateKey, timeOut);
-        if (inISO) byDate[dateKey].sessions.push({ id: Date.now()+'_'+i, in: inISO, out: outISO||null });
-        const note = col(row, ['notes','note']);
-        if (note) byDate[dateKey].note = note;
-      }
-      const toImport = Object.values(byDate);
-      if (!toImport.length) { alert('No valid records found in CSV.'); return; }
-      toImport.forEach(r => {
-        addRecord({ date: r.date, id: Date.now(), manual: true, sessions: r.sessions });
-        if (r.note) updateAct(r.date, r.note);
-      });
-      alert(`Imported ${toImport.length} record(s) successfully.`);
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
   const clearAll = () => {
     LS.set('ojt_records', []);LS.set('ojt_activities', {});LS.set('ojt_images', {});
     window.location.reload();
@@ -1472,7 +1769,7 @@ function Settings({ settings, updateSettings, records, activities, images, setSc
     <div style={{ paddingBottom: 24 }} className="fade-in">
       <div style={{ padding: '28px 20px 20px' }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>Settings</h1>
-        <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>Customize your OJT Tracker</p>
+        <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>Customize your TICKR</p>
       </div>
 
       {/* Profile card */}
@@ -1523,6 +1820,44 @@ function Settings({ settings, updateSettings, records, activities, images, setSc
           </div>
         </div>
 
+        {/* Smart Reminders */}
+        <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <Icon name="bell" size={16} color="var(--accent)" />
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Smart Reminders</p>
+          </div>
+          {[
+            { key: 'idleAlert', label: 'Idle Detection', sub: 'Alert when session is running but you\'re inactive', child: settings.idleAlert && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                <span style={{ fontSize: 13, color: 'var(--text2)' }}>Idle threshold:</span>
+                <input type="number" min={5} max={120} value={settings.idleMinutes || 30} onChange={e => updateSettings({ idleMinutes: parseInt(e.target.value) || 30 })} style={{ ...inputStyle, width: 70, padding: '6px 10px' }} />
+                <span style={{ fontSize: 13, color: 'var(--text2)' }}>minutes</span>
+              </div>
+            )},
+            { key: 'timeoutReminder', label: 'Time-Out Reminder', sub: 'Remind to end session after this time', child: settings.timeoutReminder && (
+              <input type="time" value={settings.timeoutTime || '18:00'} onChange={e => updateSettings({ timeoutTime: e.target.value })} style={{ ...inputStyle, marginTop: 8, width: 140 }} />
+            )},
+            { key: 'logReminder', label: 'Daily Log Reminder', sub: 'Remind to log in if no session by this time', child: settings.logReminder && (
+              <input type="time" value={settings.logReminderTime || '09:00'} onChange={e => updateSettings({ logReminderTime: e.target.value })} style={{ ...inputStyle, marginTop: 8, width: 140 }} />
+            )},
+          ].map(item => (
+            <div key={item.key} style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--bg)', borderRadius: 10, border: '1.5px solid var(--border)' }}>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600 }}>{item.label}</p>
+                  <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{item.sub}</p>
+                </div>
+                <button onClick={() => updateSettings({ [item.key]: !settings[item.key] })}
+                  style={{ position: 'relative', width: 46, height: 26, borderRadius: 13, flexShrink: 0,
+                    background: settings[item.key] ? 'var(--accent)' : 'var(--border)', transition: 'background 0.2s' }}>
+                  <span style={{ position: 'absolute', top: 3, left: settings[item.key] ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
+                </button>
+              </div>
+              {item.child}
+            </div>
+          ))}
+        </div>
+
         {/* Accent color */}
         <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)', marginBottom: 14 }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>Accent Color</p>
@@ -1564,37 +1899,6 @@ function Settings({ settings, updateSettings, records, activities, images, setSc
           <Icon name={saved ? 'check' : 'settings'} size={17} color="white" />
           {saved ? 'Saved!' : 'Save Settings'}
         </button>
-
-        {/* Export / Import */}
-        <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)', marginBottom: 14 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>Data Portability</p>
-          <button onClick={downloadCSV} disabled={records.length === 0}
-          style={{ width: '100%', padding: 13, borderRadius: 10, background: records.length === 0 ? 'var(--border)' : 'var(--accent-light)',
-            color: records.length === 0 ? 'var(--text3)' : 'var(--accent)', fontWeight: 600, fontSize: 14,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: records.length === 0 ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
-            <Icon name="csv" size={17} color={records.length === 0 ? 'var(--text3)' : 'var(--accent)'} />
-            Download CSV ({records.length} records)
-          </button>
-          <label style={{ width: '100%', padding: 13, borderRadius: 10, background: 'var(--accent-light)',
-            color: 'var(--accent)', fontWeight: 600, fontSize: 14,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', marginBottom: 10, boxSizing: 'border-box' }}>
-            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            Import CSV
-            <input type="file" accept=".csv,text/csv" onChange={importCSV} style={{ display: 'none' }} />
-          </label>
-          <button onClick={downloadTemplate}
-          style={{ width: '100%', padding: 13, borderRadius: 10, background: 'var(--bg)',
-            color: 'var(--text2)', fontWeight: 600, fontSize: 14, border: '1.5px dashed var(--border)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
-            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/>
-            </svg>
-            Download Data Entry Template
-          </button>
-          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8, textAlign: 'center' }}>Use the template to fill in your records, then import it here.</p>
-        </div>
 
         {/* Danger zone */}
         <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)' }}>
