@@ -31,13 +31,27 @@
   --shadow-lg: 0 12px 32px rgba(0,0,0,0.12);
   --r: 16px;
 }
+[data-theme="dark"] {
+  --bg: #111110;
+  --surface: #1c1b19;
+  --border: #2e2c29;
+  --text: #f0ede8;
+  --text2: #9c9289;
+  --text3: #5c554e;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.25);
+  --shadow: 0 4px 12px rgba(0,0,0,0.35);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.5);
+}
 html, body, #root { height: 100%; }
-body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased; transition: background-color 0.25s, color 0.25s; }
+button:active:not(:disabled) { opacity: 0.82; transform: scale(0.97); }
 button { font-family:inherit; cursor:pointer; border:none; background:none; }
 input, textarea, select { font-family:inherit; }
 ::-webkit-scrollbar { width:4px; height:4px; }
 ::-webkit-scrollbar-thumb { background:var(--border); border-radius:99px; }
 input[type="date"], input[type="time"] { appearance:none; -webkit-appearance:none; }
+:root { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
 .fade-in { animation: fadeIn 0.2s ease; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 .slide-up { animation: slideUp 0.25s cubic-bezier(0.4,0,0.2,1); }
@@ -191,7 +205,9 @@ const PATHS = {
   info: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></>,
   bell: <><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></>,
   copy: <><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></>,
-  analytics: <><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></>
+  analytics: <><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></>,
+  moon: <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />,
+  sun: <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></>
 };
 const Icon = ({ name, size = 20, color = 'currentColor', strokeWidth = 2 }) =>
 <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
@@ -278,7 +294,7 @@ function App() {
   const [records, setRecords] = useState(() => LS.get('ojt_records', []).map(migrateRecord));
   const [activities, setActs] = useState(() => LS.get('ojt_activities', {}));
   const [images, setImages] = useState(() => LS.get('ojt_images', {}));
-  const [settings, setSettings] = useState(() => LS.get('ojt_settings', { name: '', company: '', requiredHours: 486, accentColor: '#3730a3', paidLunch: true, idleAlert: true, idleMinutes: 30, timeoutReminder: true, timeoutTime: '18:00', logReminder: true, logReminderTime: '09:00' }));
+  const [settings, setSettings] = useState(() => LS.get('ojt_settings', { name: '', company: '', requiredHours: 486, accentColor: '#3730a3', paidLunch: true, darkMode: false, idleAlert: true, idleMinutes: 30, timeoutReminder: true, timeoutTime: '18:00', logReminder: true, logReminderTime: '09:00' }));
   const [tweaks, setTweaks] = useState(false);
   const [idleAlert, setIdleAlert] = useState(false);
   const [timeoutAlert, setTimeoutAlert] = useState(false);
@@ -303,9 +319,14 @@ function App() {
       else h=((r-g)/d+4)/6;
     }
     const hd = Math.round(h*360), sp = Math.round(Math.min(s*100+15,100));
-    document.documentElement.style.setProperty('--accent-light', `hsl(${hd},${sp}%,95%)`);
-    document.documentElement.style.setProperty('--accent-mid', `hsl(${hd},${sp}%,84%)`);
-  }, [settings.accentColor]);
+    const dark = settings.darkMode;
+    document.documentElement.style.setProperty('--accent-light', `hsl(${hd},${sp}%,${dark ? '18%' : '95%'})`);
+    document.documentElement.style.setProperty('--accent-mid', `hsl(${hd},${sp}%,${dark ? '32%' : '84%'})`);
+  }, [settings.accentColor, settings.darkMode]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.darkMode ? 'dark' : '');
+  }, [settings.darkMode]);
 
   useEffect(() => {
     const h = (e) => {
@@ -350,6 +371,20 @@ function App() {
     const id = setInterval(check, 60000);
     return () => clearInterval(id);
   }, [records, settings]);
+
+  useEffect(() => {
+    const h = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+      if (e.key === 'h') setScreen('home');
+      else if (e.key === 'a') setScreen('logs');
+      else if (e.key === 'r') setScreen('charts');
+      else if (e.key === ',') setScreen('settings');
+      else if (e.key === 't') { const tr = records.find(r => r.date === todayKey()); if (!tr || !openSession(tr)) timeIn(); }
+      else if (e.key === 'o') { const tr = records.find(r => r.date === todayKey()); if (tr && openSession(tr)) timeOut(); }
+    };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [records, timeIn, timeOut]);
 
   const totalHours = useMemo(() => records.reduce((s, r) => s + effectiveHours(r, settings.paidLunch), 0), [records, settings.paidLunch]);
   const todayRec = useMemo(() => records.find((r) => r.date === todayKey()), [records]);
@@ -422,7 +457,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <SideNav screen={screen} setScreen={setScreen} settings={settings} totalHours={totalHours} />
+      <SideNav screen={screen} setScreen={setScreen} settings={settings} totalHours={totalHours} updateSettings={updateSettings} />
       <div className="app-content">
         <div className="page-inner">
           <Page {...sharedProps} />
@@ -445,20 +480,25 @@ function App() {
 }
 
 // ─── Sidebar (desktop) ───────────────────────────────────────────────────────
-function SideNav({ screen, setScreen, settings, totalHours }) {
+function SideNav({ screen, setScreen, settings, totalHours, updateSettings }) {
   const pct = Math.min(totalHours / (settings.requiredHours || 486) * 100, 100);
   return (
     <aside className="sidebar">
       {/* Brand */}
-      <div style={{ padding: '28px 20px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+      <div style={{ padding: '28px 20px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name="clock" size={17} color="white" />
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
             <p style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>Tickr</p>
             <p style={{ fontSize: 11, color: 'var(--text3)' }}>Daily Time Record</p>
           </div>
+          <button onClick={() => updateSettings({ darkMode: !settings.darkMode })}
+            title={settings.darkMode ? 'Light mode' : 'Dark mode'}
+            style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.2s' }}>
+            <Icon name={settings.darkMode ? 'sun' : 'moon'} size={15} color="var(--text2)" />
+          </button>
         </div>
       </div>
 
@@ -478,6 +518,17 @@ function SideNav({ screen, setScreen, settings, totalHours }) {
 
         })}
       </nav>
+
+      {/* Keyboard shortcuts hint */}
+      <div style={{ margin: '0 12px 8px', padding: '10px 12px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)' }}>
+        <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Shortcuts</p>
+        {[['H','Home'],['A','Activity'],['R','Report'],[',','Settings'],['T','Time In'],['O','Time Out']].map(([k,v]) => (
+          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{v}</span>
+            <kbd style={{ fontSize: 10, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', color: 'var(--text2)', fontFamily: 'monospace', boxShadow: '0 1px 0 var(--border)' }}>{k}</kbd>
+          </div>
+        ))}
+      </div>
 
       {/* Progress mini-card */}
       <div style={{ margin: '12px', padding: '14px', background: 'var(--accent-light)', borderRadius: 12 }}>
@@ -1032,113 +1083,205 @@ function LogDetail({ date, record, activities, updateAct, images, addImage, remo
   );
 }
 
+// ─── Swipeable Row (mobile swipe-to-delete) ───────────────────────────────────
+function SwipeableRow({ onDelete, children }) {
+  const [offset, setOffset] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+  const startX = useRef(0);
+  const ACTION_W = 72;
+
+  const onTouchStart = (e) => { startX.current = e.touches[0].clientX; setSwiping(true); };
+  const onTouchMove = (e) => {
+    if (!swiping) return;
+    const dx = e.touches[0].clientX - startX.current;
+    if (dx < 0) setOffset(Math.max(dx, -ACTION_W));
+    else if (offset < 0) setOffset(Math.min(dx + offset, 0));
+  };
+  const onTouchEnd = () => {
+    setSwiping(false);
+    setOffset(offset < -(ACTION_W / 2) ? -ACTION_W : 0);
+  };
+
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: ACTION_W, display: 'flex' }}>
+        <button onClick={() => { onDelete(); setOffset(0); }}
+          style={{ flex: 1, background: 'var(--rose)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="trash" size={17} color="white" />
+        </button>
+      </div>
+      <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        style={{ transform: `translateX(${offset}px)`, transition: swiping ? 'none' : 'transform 0.25s cubic-bezier(0.4,0,0.2,1)', background: 'var(--surface)', position: 'relative', zIndex: 1 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, editSession, images, addImage, removeImage, activities, updateAct, settings, desktop }) {
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState(null);
   const [lightbox, setLightbox] = useState(null);
+  const nowD = new Date();
+  const [viewYear, setViewYear] = useState(nowD.getFullYear());
+  const [viewMonth, setViewMonth] = useState(nowD.getMonth());
 
-  const [filterMonth, setFilterMonth] = useState('all');
-
-  const sorted = useMemo(() => [...records].sort((a, b) => b.date.localeCompare(a.date)), [records]);
-  const grouped = useMemo(() => {
-    const groups = []; let cur = null;
-    sorted.forEach(r => {
-      const m = r.date.slice(0, 7);
-      if (m !== cur) { cur = m; groups.push({ month: m, recs: [] }); }
-      groups[groups.length - 1].recs.push(r);
-    });
-    return groups;
-  }, [sorted]);
-  const months = useMemo(() => [...new Set(sorted.map(r => r.date.slice(0, 7)))], [sorted]);
-  const filtered = useMemo(() => filterMonth === 'all' ? grouped : grouped.filter(g => g.month === filterMonth), [grouped, filterMonth]);
-
+  const today = todayKey();
   const selectedRecord = selected ? records.find(r => r.date === selected) : null;
-  const DOT = { complete: 'var(--emerald)', pending: 'var(--amber)', absent: 'var(--border)', manual: 'var(--accent)' };
 
-  const renderList = (compact) => filtered.map(({ month, recs }) => (
-    <div key={month} style={{ marginBottom: 20 }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, padding: compact ? '0' : '0 20px' }}>
-        {new Date(month + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-      </p>
-      <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', overflow: 'hidden', border: '1px solid var(--border)', ...(compact ? {} : { margin: '0 20px' }) }}>
-        {recs.map((r, i) => {
-          const hrs = effectiveHours(r, settings.paidLunch);
-          const sessions = getSessions(r);
-          const hasOpen = !!openSession(r);
-          const sk = r.manual ? 'manual' : sessions.length === 0 ? 'absent' : hasOpen ? 'pending' : 'complete';
-          const hasNotes = !!(activities[r.date] || '').trim();
-          const photoCount = (images[r.date] || []).length;
-          const isSel = selected === r.date;
+  const recMap = useMemo(() => {
+    const m = {};
+    records.forEach(r => { m[r.date] = r; });
+    return m;
+  }, [records]);
+
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const cells = [...Array(firstDow).fill(null), ...Array.from({length: daysInMonth}, (_, i) => i + 1)];
+  const monthPrefix = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
+
+  const canPrev = viewYear > 2020 || viewMonth > 0;
+  const canNext = new Date(viewYear, viewMonth + 1, 1) <= new Date(today);
+  const isCurMonth = viewYear === nowD.getFullYear() && viewMonth === nowD.getMonth();
+
+  const prevMonth = () => { if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); } else setViewMonth(m => m - 1); };
+  const nextMonth = () => { if (!canNext) return; if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); } else setViewMonth(m => m + 1); };
+  const goToday = () => { setViewYear(nowD.getFullYear()); setViewMonth(nowD.getMonth()); };
+
+  const monthStats = useMemo(() => {
+    let total = 0, worked = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const r = recMap[`${monthPrefix}-${String(d).padStart(2, '0')}`];
+      if (r) { const h = effectiveHours(r, settings.paidLunch); total += h; if (h > 0) worked++; }
+    }
+    return { total, worked };
+  }, [monthPrefix, daysInMonth, recMap, settings.paidLunch]);
+
+  const getStatus = (r) => {
+    if (!r) return null;
+    if (r.manual) return 'manual';
+    const sessions = getSessions(r);
+    if (sessions.length === 0) return 'absent';
+    if (openSession(r)) return 'pending';
+    return 'complete';
+  };
+
+  const SC = {
+    complete: { bg: 'var(--emerald-light)', c: 'var(--emerald)', bd: 'var(--emerald)' },
+    pending:  { bg: 'var(--amber-light)',   c: 'var(--amber)',   bd: 'var(--amber)' },
+    absent:   { bg: 'var(--rose-light)',    c: 'var(--rose)',    bd: 'var(--rose)' },
+    manual:   { bg: '#ede9fe',              c: '#7c3aed',        bd: '#7c3aed' },
+  };
+
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const calGrid = (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text3)', padding: '3px 0', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+        {cells.map((day, i) => {
+          if (!day) return <div key={`e${i}`} />;
+          const key = `${monthPrefix}-${String(day).padStart(2, '0')}`;
+          const r = recMap[key];
+          const isToday = key === today;
+          const isFuture = key > today;
+          const isSel = key === selected;
+          const status = getStatus(r);
+          const hrs = r ? effectiveHours(r, settings.paidLunch) : 0;
+          const sc = status ? SC[status] : null;
+          const isWeekend = (i % 7 === 0) || (i % 7 === 6);
+          const hasNotes = !!(activities[key] || '').trim();
+          const photoCount = (images[key] || []).length;
+
           return (
-            <button key={r.id} onClick={() => setSelected(r.date)}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-                borderBottom: i < recs.length - 1 ? '1px solid var(--border)' : 'none',
-                background: isSel ? 'var(--accent-light)' : 'transparent', textAlign: 'left', transition: 'background 0.1s' }}>
-              <div style={{ width: 34, flexShrink: 0, textAlign: 'center' }}>
-                <p style={{ fontSize: 19, fontWeight: 700, lineHeight: 1, color: isSel ? 'var(--accent)' : 'var(--text)' }}>{parseInt(r.date.slice(8))}</p>
-                <p style={{ fontSize: 9, color: 'var(--text3)', marginTop: 1, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  {new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
-                </p>
-              </div>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: DOT[sk], flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {hrs > 0 ? (
-                  <>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: isSel ? 'var(--accent)' : 'var(--text)' }}>{fmtH(hrs)}</p>
-                    <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}{r.manual ? ' · manual' : ''}</p>
-                  </>
-                ) : (
-                  <p style={{ fontSize: 13, color: 'var(--text3)' }}>No sessions</p>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                {hasNotes && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)' }} />}
-                {photoCount > 0 && <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>📷{photoCount}</span>}
-                <Icon name="chevron" size={13} color={isSel ? 'var(--accent)' : 'var(--text3)'} />
-              </div>
+            <button key={key}
+              onClick={() => !isFuture && setSelected(isSel ? null : key)}
+              style={{
+                borderRadius: 12, padding: '8px 3px 7px', minHeight: 64,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                background: isToday ? 'var(--accent)' : sc ? sc.bg : 'var(--surface)',
+                border: `2px solid ${isSel && !isToday ? 'var(--accent)' : isToday ? 'transparent' : sc ? sc.bd : 'var(--border)'}`,
+                opacity: isFuture ? 0.18 : 1,
+                cursor: isFuture ? 'default' : 'pointer',
+                transition: 'all 0.15s', position: 'relative', boxSizing: 'border-box'
+              }}>
+              <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1,
+                color: isToday ? 'white' : sc ? sc.c : isWeekend ? 'var(--text2)' : 'var(--text)' }}>
+                {day}
+              </span>
+              {hrs > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 700, lineHeight: 1,
+                  color: isToday ? 'rgba(255,255,255,0.85)' : sc ? sc.c : 'var(--text3)' }}>
+                  {fmtH(hrs)}
+                </span>
+              )}
+              {status === 'pending' && (
+                <span style={{ fontSize: 9, lineHeight: 1, fontWeight: 700,
+                  color: isToday ? 'rgba(255,255,255,0.75)' : 'var(--amber)' }}>active</span>
+              )}
+              {(hasNotes || photoCount > 0) && (
+                <div style={{ display: 'flex', gap: 2, marginTop: 'auto', paddingTop: 2 }}>
+                  {hasNotes && <span style={{ width: 4, height: 4, borderRadius: '50%', background: isToday ? 'rgba(255,255,255,0.6)' : 'var(--accent)' }} />}
+                  {photoCount > 0 && <span style={{ width: 4, height: 4, borderRadius: '50%', background: isToday ? 'rgba(255,255,255,0.5)' : 'var(--text3)' }} />}
+                </div>
+              )}
             </button>
           );
         })}
       </div>
+      <div style={{ display: 'flex', gap: 10, paddingTop: 12, flexWrap: 'wrap' }}>
+        {[['Complete','var(--emerald-light)','var(--emerald)'],['Active','var(--amber-light)','var(--amber)'],['Absent','var(--rose-light)','var(--rose)'],['Manual','#ede9fe','#7c3aed']].map(([l,bg,c]) => (
+          <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 3, background: bg, border: `1.5px solid ${c}` }} />
+            <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 500 }}>{l}</span>
+          </div>
+        ))}
+      </div>
     </div>
-  ));
+  );
 
   return (
     <div style={{ paddingBottom: 24 }} className="fade-in">
-      <div style={{ padding: '28px 20px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ padding: '28px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Logs</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Activity</h1>
           <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>{records.length} record{records.length !== 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => setShowAdd(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', background: 'var(--accent)', color: 'white', borderRadius: 10, fontWeight: 600, fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-          <Icon name="plus" size={15} color="white" /> Add
-        </button>
+        {desktop && (
+          <button onClick={() => setShowAdd(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', background: 'var(--accent)', color: 'white', borderRadius: 10, fontWeight: 600, fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+            <Icon name="plus" size={15} color="white" /> Add
+          </button>
+        )}
       </div>
 
-      {months.length > 1 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '0 20px 14px', scrollbarWidth: 'none' }}>
-          {['all', ...months].map(m => (
-            <button key={m} onClick={() => setFilterMonth(m)}
-              style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600,
-                background: filterMonth === m ? 'var(--accent)' : 'var(--surface)',
-                color: filterMonth === m ? 'white' : 'var(--text2)',
-                border: `1.5px solid ${filterMonth === m ? 'var(--accent)' : 'var(--border)'}` }}>
-              {m === 'all' ? 'All' : new Date(m + '-01T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-            </button>
-          ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px 16px' }}>
+        <button onClick={prevMonth} disabled={!canPrev}
+          style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: canPrev ? 1 : 0.3 }}>
+          <Icon name="back" size={16} color="var(--text2)" />
+        </button>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <p style={{ fontSize: 16, fontWeight: 700 }}>{monthLabel}</p>
+          <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 1 }}>{monthStats.worked} day{monthStats.worked !== 1 ? 's' : ''} worked · {fmtH(monthStats.total)}</p>
         </div>
-      )}
+        <button onClick={nextMonth} disabled={!canNext}
+          style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: canNext ? 1 : 0.3 }}>
+          <Icon name="chevron" size={16} color="var(--text2)" />
+        </button>
+        {!isCurMonth && (
+          <button onClick={goToday} style={{ padding: '6px 12px', borderRadius: 8, background: 'var(--accent-light)', color: 'var(--accent)', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+            Today
+          </button>
+        )}
+      </div>
 
-      {sorted.length === 0 ? (
-        <div style={{ margin: '20px', textAlign: 'center', padding: '48px 24px', background: 'var(--surface)', borderRadius: 'var(--r)', border: '1px solid var(--border)' }}>
-          <Icon name="logs" size={40} color="var(--text3)" />
-          <p style={{ fontSize: 15, fontWeight: 600, marginTop: 12, color: 'var(--text2)' }}>No logs yet</p>
-          <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>Tap Time In on Home, or use Add above</p>
-        </div>
-      ) : desktop ? (
+      {desktop ? (
         <div style={{ display: 'flex', gap: 20, padding: '0 20px', alignItems: 'flex-start' }}>
-          <div style={{ width: 260, flexShrink: 0 }}>{renderList(true)}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>{calGrid}</div>
+          <div style={{ width: 320, flexShrink: 0 }}>
             {selected ? (
               <LogDetail date={selected} record={selectedRecord} activities={activities} updateAct={updateAct}
                 images={images} addImage={addImage} removeImage={removeImage}
@@ -1147,23 +1290,30 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, edi
             ) : (
               <div style={{ textAlign: 'center', padding: '60px 24px', background: 'var(--surface)', borderRadius: 'var(--r)', border: '1px solid var(--border)' }}>
                 <Icon name="logs" size={32} color="var(--text3)" />
-                <p style={{ fontSize: 14, color: 'var(--text3)', marginTop: 12 }}>Select a date to view details</p>
+                <p style={{ fontSize: 14, color: 'var(--text3)', marginTop: 12 }}>Tap a date to view details</p>
               </div>
             )}
           </div>
         </div>
       ) : (
-        <>
-          {renderList(false)}
+        <div style={{ padding: '0 20px' }}>
+          {calGrid}
           {selected && (
             <LogDetail date={selected} record={selectedRecord} activities={activities} updateAct={updateAct}
               images={images} addImage={addImage} removeImage={removeImage}
               addSession={addSession} deleteSession={deleteSession} editSession={editSession} deleteRecord={deleteRecord}
               settings={settings} desktop={false} onClose={() => setSelected(null)} setLightbox={setLightbox} />
           )}
-        </>
+        </div>
       )}
 
+      {!desktop && (
+        <button onClick={() => setShowAdd(true)}
+          style={{ position: 'fixed', bottom: 80, right: 20, width: 52, height: 52, borderRadius: '50%', background: 'var(--accent)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <Icon name="plus" size={22} color="white" />
+        </button>
+      )}
       {showAdd && <AddRecordModal onClose={() => setShowAdd(false)} onSave={(r) => { addRecord(r); setShowAdd(false); }} existingDates={new Set(records.map(r => r.date))} />}
       {lightbox && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setLightbox(null)}>
@@ -1409,12 +1559,6 @@ function Charts({ records, totalHours, settings, desktop, activities, addRecord,
   const pct = Math.min(totalHours / settings.requiredHours * 100, 100);
   const avgHours = sorted.length > 0 ? totalHours / sorted.length : 0;
   const daysLeft = sorted.length > 0 ? Math.ceil(Math.max(settings.requiredHours - totalHours, 0) / avgHours) : 0;
-  const streak = useMemo(() => {
-    let s = 0; const tod = todayKey(); let d = new Date();
-    while (true) { const k=d.toISOString().slice(0,10); if(k>tod){d.setDate(d.getDate()-1);continue;} const r=records.find(r=>r.date===k); if(!r||effectiveHours(r,settings.paidLunch)===0)break; s++; d.setDate(d.getDate()-1); }
-    return s;
-  }, [records, settings.paidLunch]);
-
   const thisWeekSummary = useMemo(() => {
     const now = new Date(); const dow = now.getDay();
     const monday = new Date(now); monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
@@ -1428,7 +1572,7 @@ function Charts({ records, totalHours, settings, desktop, activities, addRecord,
   return (
     <div style={{ paddingBottom: 12 }} className="fade-in">
       <div style={{ padding: '28px 20px 16px' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Charts</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Report</h1>
         <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>Your OJT hours at a glance</p>
       </div>
 
@@ -1437,7 +1581,6 @@ function Charts({ records, totalHours, settings, desktop, activities, addRecord,
         {[
         { label: 'Days Logged', value: sorted.length, sub: 'days with hours' },
         { label: 'Avg per Day', value: fmtH(avgHours), sub: 'average daily' },
-        { label: 'Streak', value: streak > 0 ? `🔥 ${streak}d` : '—', sub: streak > 0 ? 'days in a row' : 'no streak yet' },
         { label: 'Est. Days Left', value: daysLeft || '—', sub: daysLeft ? 'at current pace' : 'start logging' },
         { label: 'Completion', value: `${pct.toFixed(1)}%`, sub: `of ${settings.requiredHours}h required` }].
         map((s) =>
@@ -1858,8 +2001,23 @@ function Settings({ settings, updateSettings, records, setScreen }) {
           ))}
         </div>
 
-        {/* Accent color */}
+        {/* Appearance */}
         <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)', marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>Appearance</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1.5px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Icon name={settings.darkMode ? 'moon' : 'sun'} size={18} color="var(--accent)" />
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 600 }}>Dark Mode</p>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{settings.darkMode ? 'Dark theme active' : 'Light theme active'}</p>
+              </div>
+            </div>
+            <button onClick={() => updateSettings({ darkMode: !settings.darkMode })}
+              style={{ position: 'relative', width: 46, height: 26, borderRadius: 13, flexShrink: 0,
+                background: settings.darkMode ? 'var(--accent)' : 'var(--border)', transition: 'background 0.2s' }}>
+              <span style={{ position: 'absolute', top: 3, left: settings.darkMode ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
+            </button>
+          </div>
           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>Accent Color</p>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             {ACCENTS.map((c) =>
