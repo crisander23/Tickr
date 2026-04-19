@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OJT Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --border: #e8e6df;
+  --text: #1c1917;
+  --text2: #78716c;
+  --text3: #b8b0a8;
+  --accent: #3730a3;
+  --accent-light: #eef2ff;
+  --accent-mid: #c7d2fe;
+  --emerald: #059669;
+  --emerald-light: #d1fae5;
+  --amber: #d97706;
+  --amber-light: #fef3c7;
+  --rose: #e11d48;
+  --rose-light: #ffe4e6;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.12);
+  --r: 16px;
+}
+html, body, #root { height: 100%; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased; }
+button { font-family:inherit; cursor:pointer; border:none; background:none; }
+input, textarea, select { font-family:inherit; }
+::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:99px; }
+input[type="date"], input[type="time"] { appearance:none; -webkit-appearance:none; }
+.fade-in { animation: fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+.slide-up { animation: slideUp 0.25s cubic-bezier(0.4,0,0.2,1); }
+@keyframes slideUp { from { transform:translateY(40px); opacity:0; } to { transform:none; opacity:1; } }
+.pop-in { animation: popIn 0.2s cubic-bezier(0.34,1.56,0.64,1); }
+@keyframes popIn { from { transform:scale(0.92); opacity:0; } to { transform:scale(1); opacity:1; } }
+
+/* ── Responsive layout ─────────────────────────────── */
+.app-shell { display:flex; flex-direction:column; height:100%; }
+.app-content { flex:1; overflow-y:auto; overflow-x:hidden; }
+.page-inner { max-width:520px; margin:0 auto; }
+
+@media (min-width: 768px) {
+  .app-shell { flex-direction:row; }
+  .app-content { flex:1; }
+  .page-inner { max-width:760px; }
+}
+@media (min-width: 1100px) {
+  .page-inner { max-width:980px; }
+}
+
+/* Desktop two-column page layouts */
+.desktop-grid-2 { display:grid; grid-template-columns:1fr; gap:20px; }
+@media (min-width: 768px) {
+  .desktop-grid-2 { grid-template-columns:1fr 1fr; }
+}
+.desktop-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+@media (min-width: 768px) {
+  .desktop-grid-3 { grid-template-columns:repeat(4,1fr); }
+}
+
+/* Sidebar */
+.sidebar {
+  display: none;
+}
+@media (min-width: 768px) {
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 220px;
+    min-width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    height: 100%;
+    overflow-y: auto;
+    position: sticky;
+    top: 0;
+  }
+}
+@media (min-width: 1100px) {
+  .sidebar { width: 240px; min-width: 240px; }
+}
+.bottom-nav {
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom);
+  flex-shrink: 0;
+}
+@media (min-width: 768px) {
+  .bottom-nav { display: none; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ─── Storage ────────────────────────────────────────────────────────────────
+const LS = {
+  get: (k, d) => {try {const v = localStorage.getItem(k);return v ? JSON.parse(v) : d;} catch {return d;}},
+  set: (k, v) => {try {localStorage.setItem(k, JSON.stringify(v));} catch {}}
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const fmt12 = (d) => {
+  if (!d) return '—';
+  const dt = new Date(d);
+  let h = dt.getHours(),m = dt.getMinutes();
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${String(m).padStart(2, '0')} ${ap}`;
+};
+const fmtDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const fmtShort = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fmtDay = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+const fmtDayShort = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+const todayKey = () => new Date().toISOString().slice(0, 10);
+const msToHours = (ms) => ms / 3600000;
+
+// ─── Session helpers (multi time-in/out per day) ──────────────────────────────
+const getSessions = (r) => {
+  if (r.sessions) return r.sessions;
+  // backward compat: old records with timeIn/timeOut
+  if (r.timeIn) return [{id: r.id, in: r.timeIn, out: r.timeOut||null}];
+  return [];
+};
+const recHours = (r) => getSessions(r).reduce((sum, s) => {
+  if (s.in && s.out) return sum + msToHours(new Date(s.out) - new Date(s.in));
+  return sum;
+}, 0);
+const effectiveHours = (r, paidLunch = true) => {
+  const raw = recHours(r);
+  return (!paidLunch && raw >= 5) ? raw - 1 : raw;
+};
+const openSession = (r) => getSessions(r).find(s => s.in && !s.out);
+const migrateRecord = (r) => {
+  if (r.sessions) return r;
+  return { date: r.date, id: r.id, manual: r.manual||false,
+    sessions: r.timeIn ? [{id: r.id+'_0', in: r.timeIn, out: r.timeOut||null}] : [] };
+};
+const fmtH = (h) => {
+  const w = Math.floor(h),m = Math.round((h - w) * 60);
+  if (w === 0) return `${m}m`;
+  return m > 0 ? `${w}h ${m}m` : `${w}h`;
+};
+const parseTimeToISO = (dateKey, timeStr) => {
+  if (!timeStr) return null;
+  return new Date(`${dateKey}T${timeStr}:00`).toISOString();
+};
+const isoToTimeInput = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
+const PATHS = {
+  home: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+  logs: <><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /><line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="13" y2="16" /></>,
+  activity: <><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" /></>,
+  charts: <><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></>,
+  clock: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
+  check: <polyline points="20 6 9 17 4 12" />,
+  plus: <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>,
+  chevron: <polyline points="9 18 15 12 9 6" />,
+  back: <polyline points="15 18 9 12 15 6" />,
+  download: <><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>,
+  trash: <><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></>,
+  user: <><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
+  image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></>,
+  camera: <><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" /></>,
+  x: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
+  edit: <><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></>,
+  csv: <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></>,
+  info: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></>
+};
+const Icon = ({ name, size = 20, color = 'currentColor', strokeWidth = 2 }) =>
+<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    {PATHS[name]}
+  </svg>;
+
+
+// ─── Badge ────────────────────────────────────────────────────────────────────
+const Badge = ({ status }) => {
+  const M = {
+    complete: { label: 'Complete', bg: 'var(--emerald-light)', c: 'var(--emerald)' },
+    pending: { label: 'No Time Out', bg: 'var(--amber-light)', c: 'var(--amber)' },
+    absent: { label: 'Absent', bg: 'var(--rose-light)', c: 'var(--rose)' },
+    manual: { label: 'Manual Entry', bg: '#ede9fe', c: '#7c3aed' }
+  };
+  const s = M[status] || M.absent;
+  return <span style={{ background: s.bg, color: s.c, fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 99, whiteSpace: 'nowrap' }}>{s.label}</span>;
+};
+
+// ─── Progress Ring ────────────────────────────────────────────────────────────
+const Ring = ({ pct, size = 80, stroke = 7, color = 'var(--accent)' }) => {
+  const r = (size - stroke) / 2,c = 2 * Math.PI * r;
+  const off = c - Math.min(pct, 100) / 100 * c;
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="white" strokeWidth={stroke}
+      strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
+      style={{ transition: 'stroke-dashoffset 1s ease' }} />
+    </svg>);
+
+};
+
+// ─── Input field component ────────────────────────────────────────────────────
+const Field = ({ label, children, style }) =>
+<div style={{ marginBottom: 14, ...style }}>
+    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</label>
+    {children}
+  </div>;
+
+const inputStyle = { width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 14, color: 'var(--text)', background: 'var(--bg)', outline: 'none', transition: 'border-color 0.15s' };
+
+// ─── Modal Wrapper ────────────────────────────────────────────────────────────
+const Modal = ({ onClose, children, title }) =>
+<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, backdropFilter: 'blur(2px)', padding: '20px' }} onClick={onClose}>
+    <div className="pop-in" style={{ background: 'var(--surface)', borderRadius: 18, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ padding: '20px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700 }}>{title}</h2>
+        <button onClick={onClose} style={{ padding: 6, borderRadius: 8, background: 'var(--bg)' }}><Icon name="x" size={18} color="var(--text2)" /></button>
+      </div>
+      <div style={{ padding: '12px 20px 24px' }}>{children}</div>
+    </div>
+  </div>;
+
+
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+const Confirm = ({ msg, sub, onOk, onCancel, okLabel = 'Delete', okColor = 'var(--rose)' }) =>
+<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, backdropFilter: 'blur(2px)', padding: '20px' }} onClick={onCancel}>
+    <div className="pop-in" style={{ background: 'var(--surface)', borderRadius: 18, padding: '28px 24px', width: '100%', maxWidth: 360, boxShadow: 'var(--shadow-lg)' }} onClick={(e) => e.stopPropagation()}>
+      <p style={{ fontSize: 17, fontWeight: 700, textAlign: 'center' }}>{msg}</p>
+      {sub && <p style={{ fontSize: 13, color: 'var(--text2)', textAlign: 'center', marginTop: 6 }}>{sub}</p>}
+      <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+        <button onClick={onCancel} style={{ flex: 1, padding: 13, borderRadius: 10, background: 'var(--bg)', fontWeight: 600, fontSize: 14 }}>Cancel</button>
+        <button onClick={onOk} style={{ flex: 1, padding: 13, borderRadius: 10, background: okColor, color: 'white', fontWeight: 600, fontSize: 14 }}>{okLabel}</button>
+      </div>
+    </div>
+  </div>;
+
+
+// ─── useDesktop hook ─────────────────────────────────────────────────────────
+function useDesktop() {
+  const [desk, setDesk] = useState(() => window.innerWidth >= 768);
+  useEffect(() => {
+    const h = () => setDesk(window.innerWidth >= 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return desk;
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [screen, setScreen] = useState(() => LS.get('ojt_screen', 'home'));
+  const [records, setRecords] = useState(() => LS.get('ojt_records', []).map(migrateRecord));
+  const [activities, setActs] = useState(() => LS.get('ojt_activities', {}));
+  const [images, setImages] = useState(() => LS.get('ojt_images', {}));
+  const [settings, setSettings] = useState(() => LS.get('ojt_settings', { name: '', company: '', requiredHours: 486, accentColor: '#3730a3', paidLunch: true }));
+  const [tweaks, setTweaks] = useState(false);
+
+  useEffect(() => {document.documentElement.style.setProperty('--accent', settings.accentColor);}, [settings.accentColor]);
+
+  useEffect(() => {
+    const hex = settings.accentColor;
+    if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
+    const r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
+    const max = Math.max(r,g,b), min = Math.min(r,g,b);
+    let h = 0, s = 0;
+    const l = (max+min)/2;
+    if (max !== min) {
+      const d = max-min;
+      s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+      if (max===r) h=((g-b)/d+(g<b?6:0))/6;
+      else if (max===g) h=((b-r)/d+2)/6;
+      else h=((r-g)/d+4)/6;
+    }
+    const hd = Math.round(h*360), sp = Math.round(Math.min(s*100+15,100));
+    document.documentElement.style.setProperty('--accent-light', `hsl(${hd},${sp}%,95%)`);
+    document.documentElement.style.setProperty('--accent-mid', `hsl(${hd},${sp}%,84%)`);
+  }, [settings.accentColor]);
+
+  useEffect(() => {
+    const h = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweaks(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaks(false);
+    };
+    window.addEventListener('message', h);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', h);
+  }, []);
+
+  useEffect(() => LS.set('ojt_screen', screen), [screen]);
+  useEffect(() => LS.set('ojt_records', records), [records]);
+  useEffect(() => LS.set('ojt_activities', activities), [activities]);
+  useEffect(() => LS.set('ojt_images', images), [images]);
+  useEffect(() => LS.set('ojt_settings', settings), [settings]);
+
+  const totalHours = useMemo(() => records.reduce((s, r) => s + effectiveHours(r, settings.paidLunch), 0), [records, settings.paidLunch]);
+  const todayRec = useMemo(() => records.find((r) => r.date === todayKey()), [records]);
+
+  const timeIn = useCallback(() => {
+    const key = todayKey();
+    const now = new Date().toISOString();
+    setRecords(p => {
+      const existing = p.find(r => r.date === key);
+      if (existing) {
+        // Only add new session if no open session exists
+        if (openSession(existing)) return p;
+        const newSession = {id: Date.now(), in: now, out: null};
+        return p.map(r => r.date === key ? {...r, sessions: [...(r.sessions||[]), newSession]} : r);
+      }
+      return [...p, {date: key, id: Date.now(), manual: false, sessions: [{id: Date.now()+'_0', in: now, out: null}]}];
+    });
+  }, []);
+
+  const timeOut = useCallback(() => {
+    const key = todayKey();
+    const now = new Date().toISOString();
+    setRecords(p => p.map(r => {
+      if (r.date !== key) return r;
+      const sessions = getSessions(r).map(s => s.in && !s.out ? {...s, out: now} : s);
+      return {...r, sessions};
+    }));
+  }, []);
+
+  const addSession = useCallback((date, sessionIn, sessionOut) => {
+    setRecords(p => p.map(r => {
+      if (r.date !== date) return r;
+      const newSession = {id: Date.now(), in: sessionIn, out: sessionOut||null};
+      return {...r, sessions: [...getSessions(r), newSession]};
+    }));
+  }, []);
+
+  const deleteSession = useCallback((date, sessionId) => {
+    setRecords(p => p.map(r => {
+      if (r.date !== date) return r;
+      const sessions = getSessions(r).filter(s => s.id !== sessionId);
+      return {...r, sessions};
+    }));
+  }, []);
+
+  const addRecord = useCallback((rec) => {
+    setRecords(p => {
+      const existing = p.find(r => r.date === rec.date);
+      if (existing) return p.map(r => r.date === rec.date ? {...r, sessions: rec.sessions||getSessions(r)} : r);
+      return [...p, {date: rec.date, id: rec.id||Date.now(), manual: true, sessions: rec.sessions||[]}];
+    });
+  }, []);
+
+  const deleteRecord = useCallback((id) => setRecords((p) => p.filter((r) => r.id !== id)), []);
+  const updateAct = useCallback((date, text) => setActs((p) => ({ ...p, [date]: text })), []);
+  const addImage = useCallback((date, b64) => setImages((p) => ({ ...p, [date]: [...(p[date] || []), b64] })), []);
+  const removeImage = useCallback((date, idx) => setImages((p) => ({ ...p, [date]: (p[date] || []).filter((_, i) => i !== idx) })), []);
+  const updateSettings = useCallback((s) => setSettings((p) => ({ ...p, ...s })), []);
+
+  const desktop = useDesktop();
+  const PAGES = { home: Home, logs: Logs, charts: Charts, settings: Settings };
+  const Page = PAGES[screen] || Home;
+  const sharedProps = { screen, setScreen, records, totalHours, todayRec, timeIn, timeOut, addRecord, deleteRecord, addSession, deleteSession, activities, updateAct, images, addImage, removeImage, settings, updateSettings, desktop };
+
+  return (
+    <div className="app-shell">
+      <SideNav screen={screen} setScreen={setScreen} settings={settings} totalHours={totalHours} />
+      <div className="app-content">
+        <div className="page-inner">
+          <Page {...sharedProps} />
+        </div>
+      </div>
+      <BottomNav screen={screen} setScreen={setScreen} />
+      {tweaks && <TweaksPanel records={records} setRecords={setRecords} setActs={setActs} setImages={setImages} settings={settings} updateSettings={updateSettings} onClose={() => setTweaks(false)} />}
+    </div>);
+
+}
+
+// ─── Sidebar (desktop) ───────────────────────────────────────────────────────
+function SideNav({ screen, setScreen, settings, totalHours }) {
+  const pct = Math.min(totalHours / (settings.requiredHours || 486) * 100, 100);
+  return (
+    <aside className="sidebar">
+      {/* Brand */}
+      <div style={{ padding: '28px 20px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="clock" size={17} color="white" />
+          </div>
+          <div>
+            <p style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>OJT Tracker</p>
+            <p style={{ fontSize: 11, color: 'var(--text3)' }}>Daily Time Record</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav items */}
+      <nav style={{ flex: 1, padding: '0 12px' }}>
+        {NAV.map((t) => {
+          const a = screen === t.id;
+          return (
+            <button key={t.id} onClick={() => setScreen(t.id)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, marginBottom: 2,
+              background: a ? 'var(--accent-light)' : 'transparent',
+              color: a ? 'var(--accent)' : 'var(--text2)',
+              fontWeight: a ? 700 : 500, fontSize: 14, textAlign: 'left', transition: 'all 0.15s' }}>
+              <Icon name={t.icon} size={18} color={a ? 'var(--accent)' : 'var(--text2)'} />
+              {t.label}
+            </button>);
+
+        })}
+      </nav>
+
+      {/* Progress mini-card */}
+      <div style={{ margin: '12px', padding: '14px', background: 'var(--accent-light)', borderRadius: 12 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', marginBottom: 8 }}>OJT Progress</p>
+        <div style={{ height: 6, background: 'var(--accent-mid)', borderRadius: 99, overflow: 'hidden', marginBottom: 6 }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 99, transition: 'width 1s ease' }} />
+        </div>
+        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>{pct.toFixed(1)}% — {fmtH(totalHours)} rendered</p>
+      </div>
+
+      {/* User */}
+      {settings.name &&
+      <div style={{ padding: '12px 16px 20px', display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid var(--border)' }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="user" size={15} color="var(--accent)" />
+          </div>
+          <div style={{ overflow: 'hidden' }}>
+            <p style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{settings.name}</p>
+            {settings.company && <p style={{ fontSize: 11, color: 'var(--text3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{settings.company}</p>}
+          </div>
+        </div>
+      }
+    </aside>);
+
+}
+
+// ─── Bottom Nav (mobile only) ─────────────────────────────────────────────────
+const NAV = [
+{ id: 'home', label: 'Home', icon: 'home' },
+{ id: 'logs', label: 'Logs', icon: 'logs' },
+{ id: 'charts', label: 'Charts', icon: 'charts' },
+{ id: 'settings', label: 'Settings', icon: 'settings' }];
+
+function BottomNav({ screen, setScreen }) {
+  return (
+    <nav className="bottom-nav">
+      {NAV.map((t) => {
+        const a = screen === t.id;
+        return (
+          <button key={t.id} onClick={() => setScreen(t.id)}
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '9px 0 7px', color: a ? 'var(--accent)' : 'var(--text3)', transition: 'color 0.15s', position: 'relative' }}>
+            {a && <span style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 20, height: 3, background: 'var(--accent)', borderRadius: '0 0 4px 4px' }} />}
+            <Icon name={t.icon} size={19} color={a ? 'var(--accent)' : 'var(--text3)'} />
+            <span style={{ fontSize: 10, fontWeight: a ? 700 : 400 }}>{t.label}</span>
+          </button>);
+
+      })}
+    </nav>);
+
+}
+
+// ─── Contribution Chart ───────────────────────────────────────────────────────
+function ContributionChart({ records, paidLunch = true }) {
+  const [tip, setTip] = useState(null);
+
+  const hoursMap = useMemo(() => {
+    const m = {};
+    records.forEach(r => { m[r.date] = effectiveHours(r, paidLunch); });
+    return m;
+  }, [records, paidLunch]);
+
+  const { weeks, monthLabels } = useMemo(() => {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const start = new Date(today);
+    start.setDate(start.getDate() - 16 * 7);
+    start.setDate(start.getDate() - start.getDay());
+    const weeksArr = [], months = [];
+    let cur = new Date(start);
+    while (true) {
+      const wsStr = cur.toISOString().slice(0, 10);
+      if (wsStr > todayStr) break;
+      const week = [];
+      for (let d = 0; d < 7; d++) {
+        const iso = cur.toISOString().slice(0, 10);
+        if (d === 0) {
+          const ml = cur.toLocaleDateString('en-US', { month: 'short' });
+          if (!months.length || months[months.length - 1].label !== ml)
+            months.push({ label: ml, col: weeksArr.length });
+        }
+        week.push({ date: iso, future: iso > todayStr });
+        cur.setDate(cur.getDate() + 1);
+      }
+      weeksArr.push(week);
+    }
+    return { weeks: weeksArr, monthLabels: months };
+  }, []);
+
+  const getLevel = (hrs) => !hrs ? 0 : hrs < 2 ? 1 : hrs < 4 ? 2 : hrs < 6 ? 3 : 4;
+  const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const SZ = 13, GAP = 3;
+
+  return (
+    <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700 }}>Attendance Heatmap</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          <span style={{ fontSize: 10, color: 'var(--text3)', marginRight: 2 }}>Less</span>
+          {[0, 1, 2, 3, 4].map(l => (
+            <div key={l} style={{ width: SZ, height: SZ, borderRadius: 3, flexShrink: 0,
+              background: l === 0 ? 'var(--border)' : `color-mix(in srgb, var(--accent) ${l * 25}%, var(--bg))` }} />
+          ))}
+          <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 2 }}>More</span>
+        </div>
+      </div>
+      <div style={{ overflowX: 'auto', paddingBottom: 2 }}>
+        <div style={{ display: 'inline-flex', gap: GAP, minWidth: 'max-content' }}>
+          {/* Day labels */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: GAP, paddingTop: 18, marginRight: 2 }}>
+            {DAYS.map((d, i) => (
+              <div key={i} style={{ width: 10, height: SZ, fontSize: 10, color: 'var(--text3)', display: 'flex', alignItems: 'center' }}>
+                {i % 2 === 1 ? d : ''}
+              </div>
+            ))}
+          </div>
+          {/* Weeks grid */}
+          <div>
+            {/* Month labels */}
+            <div style={{ display: 'flex', gap: GAP, marginBottom: 4, height: 14 }}>
+              {weeks.map((_, wi) => {
+                const ml = monthLabels.find(m => m.col === wi);
+                return (
+                  <div key={wi} style={{ width: SZ, fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap', overflow: 'visible', flexShrink: 0 }}>
+                    {ml ? ml.label : ''}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Cells */}
+            <div style={{ display: 'flex', gap: GAP }}>
+              {weeks.map((week, wi) => (
+                <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: GAP }}>
+                  {week.map((cell, di) => {
+                    const hrs = hoursMap[cell.date] || 0;
+                    const lv = cell.future ? -1 : getLevel(hrs);
+                    return (
+                      <div key={di}
+                        style={{ width: SZ, height: SZ, borderRadius: 3, flexShrink: 0,
+                          background: cell.future ? 'transparent'
+                            : lv === 0 ? 'var(--border)'
+                            : `color-mix(in srgb, var(--accent) ${lv * 25}%, var(--bg))`,
+                          cursor: !cell.future && hrs > 0 ? 'pointer' : 'default',
+                          transition: 'transform 0.1s' }}
+                        onMouseEnter={e => { if (!cell.future) { const r = e.currentTarget.getBoundingClientRect(); setTip({ date: cell.date, hrs, x: r.left + SZ / 2, y: r.top }); } }}
+                        onMouseLeave={() => setTip(null)}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      {tip && (
+        <div style={{ position: 'fixed', left: tip.x, top: tip.y - 38, transform: 'translateX(-50%)',
+          background: 'var(--text)', color: 'white', fontSize: 12, fontWeight: 600,
+          padding: '5px 10px', borderRadius: 7, pointerEvents: 'none', zIndex: 999, whiteSpace: 'nowrap' }}>
+          {fmtShort(tip.date)} · {tip.hrs > 0 ? fmtH(tip.hrs) : 'No log'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── HOME ─────────────────────────────────────────────────────────────────────
+function Home({ records, totalHours, todayRec, timeIn, timeOut, settings, setScreen, desktop }) {
+  const now = new Date();
+  const pct = Math.min(totalHours / settings.requiredHours * 100, 100);
+  const remaining = Math.max(settings.requiredHours - totalHours, 0);
+  const todaySessions = todayRec ? getSessions(todayRec) : [];
+  const activeSession = todayRec ? openSession(todayRec) : null;
+  const hasAnySession = todaySessions.length > 0;
+  const todayHrs = todayRec ? effectiveHours(todayRec, settings.paidLunch) : 0;
+  const greet = () => {const h = now.getHours();return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';};
+
+  const HeroCard =
+  <div style={{ background: 'var(--accent)', borderRadius: 'var(--r)', padding: '22px 20px', boxShadow: '0 8px 28px rgba(0,0,0,0.2)', color: 'white' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{ fontSize: 11, opacity: 0.7, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Today's Status</p>
+          <p style={{ fontSize: 17, fontWeight: 700, marginTop: 6, lineHeight: 1.3 }}>
+            {!hasAnySession ? 'Not yet timed in' : activeSession ? `Session ${todaySessions.length} active` : `${todaySessions.length} session${todaySessions.length>1?'s':''} completed`}
+          </p>
+          {todayHrs > 0 && <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>{fmtH(todayHrs)} logged today · {todaySessions.length} session{todaySessions.length>1?'s':''}</p>}
+          {/* Sessions list */}
+          {todaySessions.length > 0 && (
+            <div style={{marginTop:10,display:'flex',flexDirection:'column',gap:4}}>
+              {todaySessions.map((s,i)=>(
+                <div key={s.id} style={{fontSize:12,opacity:0.85,background:'rgba(255,255,255,0.12)',borderRadius:7,padding:'5px 10px',display:'flex',justifyContent:'space-between'}}>
+                  <span style={{fontWeight:600}}>#{i+1}</span>
+                  <span>{fmt12(s.in)} – {s.out ? fmt12(s.out) : <span style={{opacity:0.7}}>ongoing</span>}</span>
+                  {s.in && s.out && <span style={{fontWeight:600}}>{fmtH(msToHours(new Date(s.out)-new Date(s.in)))}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ position: 'relative', flexShrink: 0, marginLeft:12 }}>
+          <Ring pct={pct} size={76} stroke={7} />
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{Math.round(pct)}%</span>
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+        <button onClick={timeIn} disabled={!!activeSession}
+      style={{ flex: 1, padding: '12px', borderRadius: 10, background: activeSession ? 'rgba(255,255,255,0.1)' : 'white', color: activeSession ? 'rgba(255,255,255,0.35)' : 'var(--accent)', fontWeight: 700, fontSize: 14, cursor: activeSession ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}>
+          {activeSession ? '● Session Active' : hasAnySession ? '⏱ New Session' : '⏱ Time In'}
+        </button>
+        <button onClick={timeOut} disabled={!activeSession}
+      style={{ flex: 1, padding: '12px', borderRadius: 10, fontWeight: 700, fontSize: 14, transition: 'all 0.2s',
+        background: !activeSession ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.18)',
+        color: !activeSession ? 'rgba(255,255,255,0.3)' : 'white',
+        border: `1.5px solid ${!activeSession ? 'transparent' : 'rgba(255,255,255,0.35)'}`,
+        cursor: !activeSession ? 'not-allowed' : 'pointer' }}>
+          {!activeSession && hasAnySession ? '✓ Session Ended' : '⏹ Time Out'}
+        </button>
+      </div>
+    </div>;
+
+
+  const SummaryCards =
+  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+      {[
+    { label: 'Rendered', value: fmtH(totalHours), bg: 'var(--accent-light)', c: 'var(--accent)' },
+    { label: 'Required', value: fmtH(settings.requiredHours), bg: 'var(--emerald-light)', c: 'var(--emerald)' },
+    { label: 'Remaining', value: fmtH(remaining), bg: 'var(--amber-light)', c: 'var(--amber)' }].
+    map((x) =>
+    <div key={x.label} style={{ background: x.bg, borderRadius: 'var(--r)', padding: '14px 12px', textAlign: 'center' }}>
+          <p style={{ fontSize: desktop ? 20 : 17, fontWeight: 700, color: x.c }}>{x.value}</p>
+          <p style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500, marginTop: 2 }}>{x.label}</p>
+        </div>
+    )}
+    </div>;
+
+
+  const WeekCard = (() => {
+    const todStr = todayKey();
+    const dow = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday); d.setDate(monday.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      const rec = records.find(r => r.date === key);
+      const hrs = rec ? effectiveHours(rec, settings.paidLunch) : 0;
+      return { key, d, hrs, rec, isToday: key === todStr, isFuture: key > todStr,
+        isWeekend: d.getDay() === 0 || d.getDay() === 6,
+        label: d.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1) };
+    });
+    const weekTotal = days.reduce((s, d) => s + d.hrs, 0);
+    const daysWorked = days.filter(d => d.hrs > 0).length;
+    const maxHrs = Math.max(...days.map(d => d.hrs), 1);
+    const BAR_MAX = 40;
+    let streak = 0;
+    { let d = new Date();
+      while (true) {
+        const k = d.toISOString().slice(0, 10);
+        if (k > todStr) { d.setDate(d.getDate() - 1); continue; }
+        const r = records.find(r => r.date === k);
+        if (!r || effectiveHours(r, settings.paidLunch) === 0) break;
+        streak++; d.setDate(d.getDate() - 1);
+      }
+    }
+    return (
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700 }}>This Week</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {streak > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--amber)' }}>🔥 {streak} day streak</span>}
+            <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>{daysWorked}d · {fmtH(weekTotal)}</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 5 }}>
+          {days.map(day => {
+            const barH = day.hrs > 0 ? Math.max((day.hrs / maxHrs) * BAR_MAX, 6) : 0;
+            return (
+              <button key={day.key} onClick={() => day.rec && setScreen('logs')}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                  padding: '10px 3px 8px', borderRadius: 12, transition: 'all 0.15s',
+                  background: day.isToday ? 'var(--accent)' : day.hrs > 0 ? 'var(--accent-light)' : 'var(--bg)',
+                  opacity: day.isFuture ? 0.35 : 1,
+                  cursor: day.rec ? 'pointer' : 'default' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                  color: day.isToday ? 'rgba(255,255,255,0.75)' : 'var(--text3)' }}>{day.label}</span>
+                <span style={{ fontSize: 15, fontWeight: 700,
+                  color: day.isToday ? 'white' : day.hrs > 0 ? 'var(--accent)' : 'var(--text2)' }}>{day.d.getDate()}</span>
+                <div style={{ width: '100%', height: BAR_MAX, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                  <div style={{ width: '55%', height: barH || 3, borderRadius: 3, transition: 'height 0.5s ease',
+                    background: day.isToday ? 'rgba(255,255,255,0.45)' : day.hrs > 0 ? 'var(--accent)' : 'var(--border)' }} />
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 600, minHeight: 14,
+                  color: day.isToday ? 'rgba(255,255,255,0.8)' : 'var(--text3)' }}>
+                  {day.hrs > 0 ? fmtH(day.hrs) : ''}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  })();
+
+
+  return (
+    <div style={{ paddingBottom: 12 }} className="fade-in">
+      {/* Header */}
+      <div style={{ padding: '28px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <p style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          <h1 style={{ fontSize: desktop ? 28 : 23, fontWeight: 700, marginTop: 2 }}>{greet()}{settings.name ? `, ${settings.name.split(' ')[0]}` : ''} 👋</h1>
+          <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 1 }}>{settings.company || 'OJT Tracker'}</p>
+        </div>
+        {!desktop && <button onClick={() => setScreen('settings')} style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="user" size={18} color="var(--accent)" />
+        </button>}
+      </div>
+
+      {desktop ?
+      <div style={{ padding: '18px 20px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {HeroCard}
+              {SummaryCards}
+            </div>
+            <div>{WeekCard}</div>
+          </div>
+          <ContributionChart records={records} paidLunch={settings.paidLunch} />
+        </div> :
+
+      <>
+          <div style={{ margin: '18px 20px 0' }}>{HeroCard}</div>
+          <div style={{ padding: '14px 20px 0' }}>{SummaryCards}</div>
+          <div style={{ margin: '14px 20px 0' }}>{WeekCard}</div>
+          <div style={{ margin: '14px 20px 0' }}><ContributionChart records={records} paidLunch={settings.paidLunch} /></div>
+        </>
+      }
+    </div>);
+
+}
+
+// ─── LOGS ─────────────────────────────────────────────────────────────────────
+function LogDetail({ date, record, activities, updateAct, images, addImage, removeImage, addSession, deleteSession, deleteRecord, settings, desktop, onClose, setLightbox }) {
+  const [showAddSession, setShowAddSession] = useState(false);
+  const [confirmSession, setConfirmSession] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const fileRef = useRef();
+
+  const sessions = record ? getSessions(record) : [];
+  const hrs = record ? effectiveHours(record, settings.paidLunch) : 0;
+  const hasOpen = record ? !!openSession(record) : false;
+  const status = sessions.length === 0 ? 'absent' : hasOpen ? 'pending' : 'complete';
+  const imgs = images[date] || [];
+
+  const handleFile = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => addImage(date, ev.target.result);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const detailHeader = (
+    <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)' }}>
+      <div>
+        <p style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{fmtDay(date)}</p>
+        <h2 style={{ fontSize: 19, fontWeight: 700, marginTop: 2 }}>{fmtDate(date)}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+          <Badge status={record?.manual ? 'manual' : status} />
+          {hrs > 0 && <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>{fmtH(hrs)}</span>}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {record && <button onClick={() => setConfirmDelete(true)} style={{ padding: 8, borderRadius: 8, background: 'var(--rose-light)', color: 'var(--rose)' }}><Icon name="trash" size={16} /></button>}
+        <button onClick={onClose} style={{ padding: 8, borderRadius: 8, background: 'var(--bg)' }}><Icon name="x" size={16} color="var(--text2)" /></button>
+      </div>
+    </div>
+  );
+
+  const detailBody = (
+    <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Sessions */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sessions</p>
+          <button onClick={() => setShowAddSession(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', background: 'var(--accent-light)', color: 'var(--accent)', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+            <Icon name="plus" size={12} color="var(--accent)" /> Add
+          </button>
+        </div>
+        {sessions.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--text3)', padding: '8px 0' }}>No sessions — tap Add to record one</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {sessions.map((s, i) => {
+              const sHrs = s.in && s.out ? msToHours(new Date(s.out) - new Date(s.in)) : null;
+              return (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg)', borderRadius: 10, padding: '10px 14px' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', width: 20, flexShrink: 0 }}>#{i+1}</span>
+                  <div style={{ flex: 1, display: 'flex', gap: 20 }}>
+                    <div><p style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>IN</p><p style={{ fontSize: 13, fontWeight: 700 }}>{fmt12(s.in)}</p></div>
+                    <div><p style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>OUT</p><p style={{ fontSize: 13, fontWeight: 700, color: s.out ? 'var(--text)' : 'var(--amber)' }}>{s.out ? fmt12(s.out) : 'Active'}</p></div>
+                    {sHrs !== null && <div><p style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>HRS</p><p style={{ fontSize: 13, fontWeight: 700 }}>{fmtH(sHrs)}</p></div>}
+                  </div>
+                  <button onClick={() => setConfirmSession(s.id)} style={{ color: 'var(--text3)', padding: 4, borderRadius: 6 }}><Icon name="trash" size={13} /></button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {/* Notes */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Notes</p>
+          {(activities[date] || '').length > 0 && <span style={{ fontSize: 11, color: 'var(--text3)' }}>Auto-saved ✓</span>}
+        </div>
+        <div style={{ background: 'var(--bg)', borderRadius: 10, border: '1.5px solid var(--border)' }}>
+          <textarea value={activities[date] || ''} onChange={e => updateAct(date, e.target.value)}
+            placeholder={"What did you work on today?\n\n• Task 1\n• Task 2"}
+            style={{ width: '100%', resize: 'none', border: 'none', outline: 'none', padding: '12px 14px', fontSize: 14, lineHeight: 1.7, color: 'var(--text)', background: 'transparent', minHeight: 100, fontFamily: 'DM Sans,sans-serif' }} />
+        </div>
+      </div>
+      {/* Photos */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Photos{imgs.length > 0 ? ` (${imgs.length})` : ''}</p>
+          <button onClick={() => fileRef.current && fileRef.current.click()} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', background: 'var(--accent-light)', color: 'var(--accent)', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+            <Icon name="camera" size={13} color="var(--accent)" /> Add
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+        </div>
+        {imgs.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--text3)' }}>No photos yet</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {imgs.map((src, i) => (
+              <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: 10, overflow: 'hidden', cursor: 'pointer' }} onClick={() => setLightbox(src)}>
+                <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <button onClick={e => { e.stopPropagation(); removeImage(date, i); }} style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="x" size={12} color="white" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const subModals = (
+    <>
+      {showAddSession && record && <AddSessionModal date={date} onClose={() => setShowAddSession(false)} onSave={(sIn, sOut) => { addSession(date, sIn, sOut); setShowAddSession(false); }} existingSessions={sessions} />}
+      {confirmSession && <Confirm msg="Delete this session?" sub="This cannot be undone." onOk={() => { deleteSession(date, confirmSession); setConfirmSession(null); }} onCancel={() => setConfirmSession(null)} />}
+      {confirmDelete && record && <Confirm msg="Delete this record?" sub="All sessions, notes, and photos will be removed." onOk={() => { deleteRecord(record.id); onClose(); }} onCancel={() => setConfirmDelete(false)} />}
+    </>
+  );
+
+  if (desktop) {
+    return (
+      <>
+        <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', border: '1px solid var(--border)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+          {detailHeader}
+          {detailBody}
+        </div>
+        {subModals}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 500, backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={onClose}>
+        <div className="pop-in" style={{ background: 'var(--surface)', borderRadius: 18, width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }} onClick={e => e.stopPropagation()}>
+          {detailHeader}
+          {detailBody}
+        </div>
+      </div>
+      {subModals}
+    </>
+  );
+}
+
+function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, images, addImage, removeImage, activities, updateAct, settings, desktop }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
+
+  const sorted = useMemo(() => [...records].sort((a, b) => b.date.localeCompare(a.date)), [records]);
+  const grouped = useMemo(() => {
+    const groups = []; let cur = null;
+    sorted.forEach(r => {
+      const m = r.date.slice(0, 7);
+      if (m !== cur) { cur = m; groups.push({ month: m, recs: [] }); }
+      groups[groups.length - 1].recs.push(r);
+    });
+    return groups;
+  }, [sorted]);
+
+  const selectedRecord = selected ? records.find(r => r.date === selected) : null;
+  const DOT = { complete: 'var(--emerald)', pending: 'var(--amber)', absent: 'var(--border)', manual: 'var(--accent)' };
+
+  const renderList = (compact) => grouped.map(({ month, recs }) => (
+    <div key={month} style={{ marginBottom: 20 }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, padding: compact ? '0' : '0 20px' }}>
+        {new Date(month + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+      </p>
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', overflow: 'hidden', border: '1px solid var(--border)', ...(compact ? {} : { margin: '0 20px' }) }}>
+        {recs.map((r, i) => {
+          const hrs = effectiveHours(r, settings.paidLunch);
+          const sessions = getSessions(r);
+          const hasOpen = !!openSession(r);
+          const sk = r.manual ? 'manual' : sessions.length === 0 ? 'absent' : hasOpen ? 'pending' : 'complete';
+          const hasNotes = !!(activities[r.date] || '').trim();
+          const photoCount = (images[r.date] || []).length;
+          const isSel = selected === r.date;
+          return (
+            <button key={r.id} onClick={() => setSelected(r.date)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                borderBottom: i < recs.length - 1 ? '1px solid var(--border)' : 'none',
+                background: isSel ? 'var(--accent-light)' : 'transparent', textAlign: 'left', transition: 'background 0.1s' }}>
+              <div style={{ width: 34, flexShrink: 0, textAlign: 'center' }}>
+                <p style={{ fontSize: 19, fontWeight: 700, lineHeight: 1, color: isSel ? 'var(--accent)' : 'var(--text)' }}>{parseInt(r.date.slice(8))}</p>
+                <p style={{ fontSize: 9, color: 'var(--text3)', marginTop: 1, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
+                </p>
+              </div>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: DOT[sk], flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {hrs > 0 ? (
+                  <>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: isSel ? 'var(--accent)' : 'var(--text)' }}>{fmtH(hrs)}</p>
+                    <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}{r.manual ? ' · manual' : ''}</p>
+                  </>
+                ) : (
+                  <p style={{ fontSize: 13, color: 'var(--text3)' }}>No sessions</p>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {hasNotes && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)' }} />}
+                {photoCount > 0 && <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>📷{photoCount}</span>}
+                <Icon name="chevron" size={13} color={isSel ? 'var(--accent)' : 'var(--text3)'} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  ));
+
+  return (
+    <div style={{ paddingBottom: 24 }} className="fade-in">
+      <div style={{ padding: '28px 20px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Logs</h1>
+          <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>{records.length} record{records.length !== 1 ? 's' : ''}</p>
+        </div>
+        <button onClick={() => setShowAdd(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', background: 'var(--accent)', color: 'white', borderRadius: 10, fontWeight: 600, fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+          <Icon name="plus" size={15} color="white" /> Add
+        </button>
+      </div>
+
+      {sorted.length === 0 ? (
+        <div style={{ margin: '20px', textAlign: 'center', padding: '48px 24px', background: 'var(--surface)', borderRadius: 'var(--r)', border: '1px solid var(--border)' }}>
+          <Icon name="logs" size={40} color="var(--text3)" />
+          <p style={{ fontSize: 15, fontWeight: 600, marginTop: 12, color: 'var(--text2)' }}>No logs yet</p>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>Tap Time In on Home, or use Add above</p>
+        </div>
+      ) : desktop ? (
+        <div style={{ display: 'flex', gap: 20, padding: '0 20px', alignItems: 'flex-start' }}>
+          <div style={{ width: 260, flexShrink: 0 }}>{renderList(true)}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {selected ? (
+              <LogDetail date={selected} record={selectedRecord} activities={activities} updateAct={updateAct}
+                images={images} addImage={addImage} removeImage={removeImage}
+                addSession={addSession} deleteSession={deleteSession} deleteRecord={deleteRecord}
+                settings={settings} desktop={true} onClose={() => setSelected(null)} setLightbox={setLightbox} />
+            ) : (
+              <div style={{ textAlign: 'center', padding: '60px 24px', background: 'var(--surface)', borderRadius: 'var(--r)', border: '1px solid var(--border)' }}>
+                <Icon name="logs" size={32} color="var(--text3)" />
+                <p style={{ fontSize: 14, color: 'var(--text3)', marginTop: 12 }}>Select a date to view details</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {renderList(false)}
+          {selected && (
+            <LogDetail date={selected} record={selectedRecord} activities={activities} updateAct={updateAct}
+              images={images} addImage={addImage} removeImage={removeImage}
+              addSession={addSession} deleteSession={deleteSession} deleteRecord={deleteRecord}
+              settings={settings} desktop={false} onClose={() => setSelected(null)} setLightbox={setLightbox} />
+          )}
+        </>
+      )}
+
+      {showAdd && <AddRecordModal onClose={() => setShowAdd(false)} onSave={(r) => { addRecord(r); setShowAdd(false); }} existingDates={new Set(records.map(r => r.date))} />}
+      {lightbox && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setLightbox(null)}>
+          <img src={lightbox} style={{ maxWidth: '95%', maxHeight: '90vh', borderRadius: 12, objectFit: 'contain' }} />
+          <button style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.15)', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setLightbox(null)}>
+            <Icon name="x" size={20} color="white" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Mini Calendar Picker ────────────────────────────────────────────────────
+function MiniCalendar({ value, onChange, maxDate, existingDates }) {
+  const initD = value ? new Date(value + 'T00:00:00') : new Date(maxDate + 'T00:00:00');
+  const [vy, setVy] = useState(initD.getFullYear());
+  const [vm, setVm] = useState(initD.getMonth());
+
+  const firstDow = new Date(vy, vm, 1).getDay();
+  const daysInMonth = new Date(vy, vm + 1, 0).getDate();
+  const cells = [...Array(firstDow).fill(null), ...Array.from({length: daysInMonth}, (_, i) => i + 1)];
+
+  const canPrev = new Date(vy, vm - 1, 1) >= new Date(2020, 0, 1);
+  const canNext = new Date(vy, vm + 1, 1) <= new Date(maxDate + 'T00:00:00');
+  const prev = () => { if (vm === 0) { setVm(11); setVy(vy - 1); } else setVm(vm - 1); };
+  const next = () => { if (vm === 11) { setVm(0); setVy(vy + 1); } else setVm(vm + 1); };
+
+  const monthLabel = new Date(vy, vm, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  return (
+    <div style={{ background: 'var(--bg)', borderRadius: 12, padding: '12px 8px', border: '1.5px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, padding: '0 4px' }}>
+        <button onClick={prev} disabled={!canPrev} style={{ width: 30, height: 30, borderRadius: 8, background: canPrev ? 'var(--surface)' : 'transparent', color: canPrev ? 'var(--text)' : 'var(--border)', fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+        <span style={{ fontSize: 14, fontWeight: 700 }}>{monthLabel}</span>
+        <button onClick={next} disabled={!canNext} style={{ width: 30, height: 30, borderRadius: 8, background: canNext ? 'var(--surface)' : 'transparent', color: canNext ? 'var(--text)' : 'var(--border)', fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text3)', padding: '3px 0' }}>{d}</div>
+        ))}
+        {cells.map((day, i) => {
+          if (!day) return <div key={`e${i}`} />;
+          const key = `${vy}-${String(vm + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+          const isDisabled = key > maxDate;
+          const isSelected = key === value;
+          const hasRecord = existingDates.has(key);
+          const col = i % 7;
+          const isWeekend = col === 0 || col === 6;
+          return (
+            <button key={key} disabled={isDisabled} onClick={() => onChange(key)}
+              style={{ position: 'relative', padding: '7px 0', borderRadius: 8, textAlign: 'center',
+                background: isSelected ? 'var(--accent)' : 'transparent',
+                color: isSelected ? 'white' : isDisabled ? 'var(--border)' : isWeekend ? 'var(--text2)' : 'var(--text)',
+                fontWeight: isSelected ? 700 : 500, fontSize: 13,
+                cursor: isDisabled ? 'default' : 'pointer' }}>
+              {day}
+              {hasRecord && !isSelected && (
+                <span style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: 'var(--amber)', display: 'block' }} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Add Record Modal ─────────────────────────────────────────────────────────
+function AddRecordModal({ onClose, onSave, existingDates }) {
+  const [date, setDate] = useState('');
+  const [tIn, setTIn] = useState('08:00');
+  const [tOut, setTOut] = useState('17:00');
+  const [err, setErr] = useState('');
+
+  const save = () => {
+    if (!date) {setErr('Please select a date.');return;}
+    if (date === todayKey()) {setErr("Use the Time In/Out buttons for today's record.");return;}
+    if (date > todayKey()) {setErr('Cannot add future dates.');return;}
+    if (!tIn) {setErr('Please enter a Time In.');return;}
+    if (tOut && tOut <= tIn) {setErr('Time Out must be after Time In.');return;}
+    const sIn = parseTimeToISO(date, tIn);
+    const sOut = tOut ? parseTimeToISO(date, tOut) : null;
+    onSave({ date, id: Date.now(), manual: true, sessions: [{id: Date.now()+'_0', in: sIn, out: sOut}] });
+  };
+
+  const maxDate = new Date(); maxDate.setDate(maxDate.getDate() - 1);
+  const maxStr = maxDate.toISOString().slice(0, 10);
+
+  return (
+    <Modal title="Add Past Record" onClose={onClose}>
+      <Field label="Select Date">
+        <MiniCalendar value={date} onChange={setDate} maxDate={maxStr} existingDates={existingDates} />
+        {date && <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6, textAlign: 'center', fontWeight: 600 }}>
+          {new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+        </p>}
+        {existingDates.has(date) && <p style={{ fontSize: 12, color: 'var(--amber)', marginTop: 4 }}>⚠ A record for this date already exists — saving will update it.</p>}
+      </Field>
+      <Field label="Time In">
+        <input type="time" value={tIn} onChange={(e) => setTIn(e.target.value)} style={inputStyle} />
+      </Field>
+      <Field label="Time Out (optional)">
+        <input type="time" value={tOut} onChange={(e) => setTOut(e.target.value)} style={inputStyle} />
+      </Field>
+      {err && <p style={{ fontSize: 13, color: 'var(--rose)', marginBottom: 12, padding: '8px 12px', background: 'var(--rose-light)', borderRadius: 8 }}>{err}</p>}
+      <button onClick={save} disabled={!date} style={{ width: '100%', padding: 14, borderRadius: 10, background: date ? 'var(--accent)' : 'var(--border)', color: date ? 'white' : 'var(--text3)', fontWeight: 700, fontSize: 15, cursor: date ? 'pointer' : 'not-allowed' }}>Save Record</button>
+    </Modal>);
+
+}
+
+// ─── Add Session Modal ────────────────────────────────────────────────────────
+function AddSessionModal({date, onClose, onSave, existingSessions}) {
+  const [tIn, setTIn] = useState('08:00');
+  const [tOut, setTOut] = useState('17:00');
+  const [err, setErr] = useState('');
+
+  const save = () => {
+    if (!tIn) { setErr('Please enter a Time In.'); return; }
+    if (tOut && tOut <= tIn) { setErr('Time Out must be after Time In.'); return; }
+    // Check overlap with existing sessions
+    const newIn = parseTimeToISO(date, tIn);
+    const newOut = tOut ? parseTimeToISO(date, tOut) : null;
+    for (const s of existingSessions) {
+      const sIn = new Date(s.in), sOut = s.out ? new Date(s.out) : null;
+      const nIn = new Date(newIn), nOut = newOut ? new Date(newOut) : null;
+      if (sOut && nOut) {
+        if (nIn < sOut && nOut > sIn) { setErr('This session overlaps with an existing one.'); return; }
+      }
+    }
+    onSave(newIn, newOut);
+  };
+
+  return (
+    <Modal title={`Add Session — ${fmtDate(date)}`} onClose={onClose}>
+      <p style={{fontSize:13,color:'var(--text2)',marginBottom:16,padding:'8px 12px',background:'var(--accent-light)',borderRadius:8}}>
+        Add an additional time-in/out session for this day. Sessions are tracked separately.
+      </p>
+      <Field label="Time In">
+        <input type="time" value={tIn} onChange={e=>setTIn(e.target.value)} style={inputStyle}/>
+      </Field>
+      <Field label="Time Out (optional)">
+        <input type="time" value={tOut} onChange={e=>setTOut(e.target.value)} style={inputStyle}/>
+      </Field>
+      {err && <p style={{fontSize:13,color:'var(--rose)',marginBottom:12,padding:'8px 12px',background:'var(--rose-light)',borderRadius:8}}>{err}</p>}
+      <button onClick={save} style={{width:'100%',padding:14,borderRadius:10,background:'var(--accent)',color:'white',fontWeight:700,fontSize:15}}>
+        Add Session
+      </button>
+    </Modal>
+  );
+}
+
+function Charts({ records, totalHours, settings, desktop }) {
+  const [view, setView] = useState('daily');
+
+  const sorted = [...records].filter((r) => effectiveHours(r, settings.paidLunch) > 0).sort((a, b) => a.date.localeCompare(b.date));
+
+  // Last 14 days bar data
+  const barData = useMemo(() => {
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const rec = records.find((r) => r.date === key);
+      days.push({ key, label: fmtDayShort(key), date: fmtShort(key), hours: rec ? effectiveHours(rec, settings.paidLunch) : 0 });
+    }
+    return days;
+  }, [records]);
+
+  // Cumulative line data
+  const lineData = useMemo(() => {
+    let cum = 0;
+    return sorted.map((r) => {cum += effectiveHours(r, settings.paidLunch);return { date: fmtShort(r.date), cum, daily: effectiveHours(r, settings.paidLunch) };});
+  }, [sorted]);
+
+  // Weekly totals
+  const weekData = useMemo(() => {
+    const weeks = {};
+    sorted.forEach((r) => {
+      const d = new Date(r.date + 'T00:00:00');
+      const sun = new Date(d);sun.setDate(d.getDate() - d.getDay());
+      const key = sun.toISOString().slice(0, 10);
+      weeks[key] = (weeks[key] || 0) + effectiveHours(r, settings.paidLunch);
+    });
+    return Object.entries(weeks).sort((a, b) => a[0].localeCompare(b[0])).slice(-8).map(([k, v]) => ({ label: `Wk ${fmtShort(k)}`, hours: v }));
+  }, [sorted]);
+
+  const pct = Math.min(totalHours / settings.requiredHours * 100, 100);
+  const avgHours = sorted.length > 0 ? totalHours / sorted.length : 0;
+  const daysLeft = sorted.length > 0 ? Math.ceil(Math.max(settings.requiredHours - totalHours, 0) / avgHours) : 0;
+
+  return (
+    <div style={{ paddingBottom: 12 }} className="fade-in">
+      <div style={{ padding: '28px 20px 16px' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Charts</h1>
+        <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>Your OJT hours at a glance</p>
+      </div>
+
+      {/* Stats row */}
+      <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(4,1fr)' : '1fr 1fr', gap: 10, padding: '0 20px 16px' }}>
+        {[
+        { label: 'Days Logged', value: sorted.length, sub: 'days with hours' },
+        { label: 'Avg per Day', value: fmtH(avgHours), sub: 'average daily' },
+        { label: 'Est. Days Left', value: daysLeft || '—', sub: daysLeft ? 'at current pace' : 'start logging' },
+        { label: 'Completion', value: `${pct.toFixed(1)}%`, sub: `of ${settings.requiredHours}h required` }].
+        map((s) =>
+        <div key={s.label} style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '14px 16px', border: '1px solid var(--border)' }}>
+            <p style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</p>
+            <p style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: 'var(--accent)' }}>{s.value}</p>
+            <p style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>{s.sub}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Tab switcher */}
+      <div style={{ display: 'flex', gap: 6, padding: '0 20px 14px' }}>
+        {[{ id: 'daily', label: 'Daily (14d)' }, { id: 'weekly', label: 'Weekly' }, { id: 'cumulative', label: 'Progress' }].map((t) =>
+        <button key={t.id} onClick={() => setView(t.id)}
+        style={{ padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600,
+          background: view === t.id ? 'var(--accent)' : 'var(--surface)',
+          color: view === t.id ? 'white' : 'var(--text2)',
+          border: `1.5px solid ${view === t.id ? 'transparent' : 'var(--border)'}`,
+          boxShadow: view === t.id ? '0 4px 10px rgba(0,0,0,0.12)' : 'none', transition: 'all 0.15s' }}>
+            {t.label}
+          </button>
+        )}
+      </div>
+
+      {/* Charts */}
+      <div style={{ padding: '0 20px' }}>
+        {view === 'daily' && <BarChart data={barData} yKey="hours" labelKey="label" title="Hours per day (last 14 days)" />}
+        {view === 'weekly' && (weekData.length > 0 ? <BarChart data={weekData} yKey="hours" labelKey="label" title="Hours per week" /> : <EmptyChart msg="Need at least 1 week of data" />)}
+        {view === 'cumulative' && (lineData.length > 1 ? <LineChart data={lineData} required={settings.requiredHours} title="Cumulative hours" /> : <EmptyChart msg="Need at least 2 records" />)}
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ margin: '16px 20px 0', background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Overall Progress</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)' }}>{fmtH(totalHours)} / {fmtH(settings.requiredHours)}</span>
+        </div>
+        <div style={{ height: 10, background: 'var(--accent-mid)', borderRadius: 99, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 99, transition: 'width 1s ease' }} />
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>{fmtH(Math.max(settings.requiredHours - totalHours, 0))} remaining · {pct.toFixed(1)}% complete</p>
+      </div>
+    </div>);
+
+}
+
+const EmptyChart = ({ msg }) =>
+<div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '40px', textAlign: 'center', border: '1px solid var(--border)' }}>
+    <Icon name="charts" size={32} color="var(--text3)" />
+    <p style={{ fontSize: 14, color: 'var(--text2)', marginTop: 10, fontWeight: 500 }}>{msg}</p>
+  </div>;
+
+
+function BarChart({ data, yKey, labelKey, title }) {
+  const W = 340,H = 160,PAD = { t: 10, r: 10, b: 34, l: 34 };
+  const maxVal = Math.max(...data.map((d) => d[yKey]), 1);
+  const cW = W - PAD.l - PAD.r,cH = H - PAD.t - PAD.b;
+  const bW = Math.max(cW / data.length - 4, 4);
+  const yTicks = [0, Math.ceil(maxVal / 2), Math.ceil(maxVal)];
+  return (
+    <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)', marginBottom: 10 }}>
+      <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginBottom: 12 }}>{title}</p>
+      <div style={{ overflowX: 'auto' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ minWidth: 280, display: 'block' }}>
+          {/* Grid lines */}
+          {yTicks.map((t) => {
+            const y = PAD.t + cH - t / maxVal * cH;
+            return <g key={t}>
+              <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="var(--border)" strokeWidth="1" />
+              <text x={PAD.l - 4} y={y + 4} fontSize="9" fill="var(--text3)" textAnchor="end">{t}h</text>
+            </g>;
+          })}
+          {/* Bars */}
+          {data.map((d, i) => {
+            const h = Math.max(d[yKey] / maxVal * cH, d[yKey] > 0 ? 2 : 0);
+            const x = PAD.l + cW / data.length * i + (cW / data.length - bW) / 2;
+            const y = PAD.t + cH - h;
+            const isToday = d.key === todayKey();
+            return <g key={i}>
+              <rect x={x} y={y} width={bW} height={h} rx={Math.min(bW / 2, 4)}
+              fill={isToday ? 'var(--accent)' : d[yKey] > 0 ? 'var(--accent-mid)' : 'var(--border)'}
+              opacity={d[yKey] > 0 ? 1 : 0.5} />
+              {data.length <= 14 && <text x={x + bW / 2} y={H - 2} fontSize="8" fill={isToday ? 'var(--accent)' : 'var(--text3)'} textAnchor="middle" fontWeight={isToday ? '700' : '400'}>{d[labelKey]}</text>}
+            </g>;
+          })}
+        </svg>
+      </div>
+    </div>);
+
+}
+
+function LineChart({ data, required, title }) {
+  const W = 340,H = 170,PAD = { t: 14, r: 16, b: 30, l: 40 };
+  const maxVal = Math.max(Math.max(...data.map((d) => d.cum)), required) * 1.05;
+  const cW = W - PAD.l - PAD.r,cH = H - PAD.t - PAD.b;
+  const px = (i) => PAD.l + i / (data.length - 1) * cW;
+  const py = (v) => PAD.t + cH - v / maxVal * cH;
+  const pts = data.map((d, i) => `${px(i)},${py(d.cum)}`).join(' ');
+  const areaPath = `M${px(0)},${py(0)} ${data.map((d, i) => `L${px(i)},${py(d.cum)}`).join(' ')} L${px(data.length - 1)},${PAD.t + cH} L${px(0)},${PAD.t + cH} Z`;
+  const reqY = py(required);
+  const yTicks = [0, Math.ceil(required / 2), required];
+  return (
+    <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)', marginBottom: 10 }}>
+      <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginBottom: 12 }}>{title}</p>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+        <defs>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {yTicks.map((t) => {
+          const y = py(t);
+          return <g key={t}>
+            <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="var(--border)" strokeWidth="1" />
+            <text x={PAD.l - 4} y={y + 4} fontSize="9" fill="var(--text3)" textAnchor="end">{t}h</text>
+          </g>;
+        })}
+        {reqY >= PAD.t && reqY <= PAD.t + cH &&
+        <g>
+            <line x1={PAD.l} y1={reqY} x2={W - PAD.r} y2={reqY} stroke="var(--emerald)" strokeWidth="1.5" strokeDasharray="4 3" />
+            <text x={W - PAD.r} y={reqY - 3} fontSize="9" fill="var(--emerald)" textAnchor="end" fontWeight="600">Goal</text>
+          </g>
+        }
+        <path d={areaPath} fill="url(#areaGrad)" />
+        <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {data.map((d, i) =>
+        <circle key={i} cx={px(i)} cy={py(d.cum)} r={i === data.length - 1 ? 4 : 2.5} fill="var(--accent)" stroke="white" strokeWidth="1.5" />
+        )}
+        {/* X labels — show first, middle, last */}
+        {[0, Math.floor((data.length - 1) / 2), data.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) =>
+        <text key={i} x={px(i)} y={H - 2} fontSize="9" fill="var(--text3)" textAnchor="middle">{data[i].date}</text>
+        )}
+      </svg>
+    </div>);
+
+}
+
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+function Settings({ settings, updateSettings, records, activities, images, setScreen, addRecord, updateAct }) {
+  const [name, setName] = useState(settings.name);
+  const [company, setCompany] = useState(settings.company);
+  const [reqHrs, setReqHrs] = useState(String(settings.requiredHours));
+  const [saved, setSaved] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+
+  const ACCENTS = ['#3730a3', '#0f766e', '#9333ea', '#dc2626', '#d97706', '#0284c7', '#be185d', '#065f46'];
+
+  const save = () => {
+    const h = parseInt(reqHrs) || 486;
+    updateSettings({ name: name.trim(), company: company.trim(), requiredHours: h });
+    setSaved(true);setTimeout(() => setSaved(false), 2000);
+  };
+
+  const downloadCSV = () => {
+    const rows = [['Date','Day','Session #','Time In','Time Out','Session Hours','Total Day Hours','Status','Notes']];
+    [...records].sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
+      const sessions=getSessions(r), totalH=effectiveHours(r, settings.paidLunch);
+      const status=sessions.length===0?'Absent':openSession(r)?'Active':'Complete';
+      if(sessions.length===0){
+        rows.push([fmtDate(r.date),fmtDay(r.date),'—','—','—','0',totalH.toFixed(2),status,(activities[r.date]||'').replace(/\n/g,' | ')]);
+      } else {
+        sessions.forEach((s,i)=>{
+          const sH=s.in&&s.out?msToHours(new Date(s.out)-new Date(s.in)):0;
+          rows.push([fmtDate(r.date),fmtDay(r.date),i+1,fmt12(s.in),s.out?fmt12(s.out):'Active',sH.toFixed(2),i===0?totalH.toFixed(2):'',i===0?status:'',i===0?(activities[r.date]||'').replace(/\n/g,' | '):'']);
+        });
+      }
+    });
+    rows.push(['','','','','TOTAL','',records.reduce((s,r)=>s+effectiveHours(r, settings.paidLunch),0).toFixed(2),'','']);
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `OJT_DTR_${todayKey()}.csv`;a.click();
+  };
+
+  const downloadTemplate = () => {
+    const csv = [
+      'Date,Time In,Time Out,Notes',
+      '2026-04-19,08:00,17:00,First day at office',
+      '2026-04-20,08:30,17:30,',
+      '2026-04-21,09:00,18:00,Attended orientation',
+    ].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'OJT_DTR_Template.csv'; a.click();
+  };
+
+  const importCSV = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const lines = ev.target.result.split(/\r?\n/).filter(l => l.trim());
+      const header = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
+      const col = (row, names) => { const i = names.map(n => header.indexOf(n)).find(i => i >= 0); return i >= 0 ? row[i] : ''; };
+      const parseCell = c => c.replace(/^"|"$/g,'').trim();
+      const toISO = (dateStr, timeStr) => {
+        if (!dateStr || !timeStr || timeStr === '—' || timeStr === 'Active') return null;
+        const d = dateStr.replace(/\//g,'-');
+        const t12 = timeStr.match(/(\d+):(\d+)\s*(am|pm)/i);
+        if (t12) {
+          let h = parseInt(t12[1]), m = parseInt(t12[2]);
+          if (t12[3].toLowerCase()==='pm' && h!==12) h+=12;
+          if (t12[3].toLowerCase()==='am' && h===12) h=0;
+          return `${d}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
+        }
+        const t24 = timeStr.match(/(\d{1,2}):(\d{2})/);
+        if (t24) return `${d}T${String(t24[1]).padStart(2,'0')}:${t24[2]}:00`;
+        return null;
+      };
+      const byDate = {};
+      for (let i = 1; i < lines.length; i++) {
+        const raw = lines[i].split(','); const row = raw.map(parseCell);
+        const dateRaw = col(row, ['date']);
+        if (!dateRaw || dateRaw === '' || dateRaw === 'TOTAL') continue;
+        const dateKey = dateRaw.replace(/\//g,'-').slice(0,10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+        const timeIn  = col(row, ['time in','timein']);
+        const timeOut = col(row, ['time out','timeout']);
+        if (!byDate[dateKey]) byDate[dateKey] = { date: dateKey, sessions: [], note: '' };
+        const inISO  = toISO(dateKey, timeIn);
+        const outISO = toISO(dateKey, timeOut);
+        if (inISO) byDate[dateKey].sessions.push({ id: Date.now()+'_'+i, in: inISO, out: outISO||null });
+        const note = col(row, ['notes','note']);
+        if (note) byDate[dateKey].note = note;
+      }
+      const toImport = Object.values(byDate);
+      if (!toImport.length) { alert('No valid records found in CSV.'); return; }
+      toImport.forEach(r => {
+        addRecord({ date: r.date, id: Date.now(), manual: true, sessions: r.sessions });
+        if (r.note) updateAct(r.date, r.note);
+      });
+      alert(`Imported ${toImport.length} record(s) successfully.`);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const clearAll = () => {
+    LS.set('ojt_records', []);LS.set('ojt_activities', {});LS.set('ojt_images', {});
+    window.location.reload();
+  };
+
+  return (
+    <div style={{ paddingBottom: 24 }} className="fade-in">
+      <div style={{ padding: '28px 20px 20px' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Settings</h1>
+        <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>Customize your OJT Tracker</p>
+      </div>
+
+      {/* Profile card */}
+      <div style={{ margin: '0 20px 20px', background: 'var(--accent)', borderRadius: 'var(--r)', padding: '20px', color: 'white', boxShadow: '0 6px 20px rgba(0,0,0,0.15)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="user" size={24} color="white" />
+          </div>
+          <div>
+            <p style={{ fontWeight: 700, fontSize: 16 }}>{settings.name || 'Your Name'}</p>
+            <p style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>{settings.company || 'Company / School'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '0 20px' }}>
+        {/* Profile fields */}
+        <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)', marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>Profile</p>
+          <Field label="Your Name">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Juan Dela Cruz" style={inputStyle} />
+          </Field>
+          <Field label="Company / School" style={{ marginBottom: 0 }}>
+            <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="e.g. Acme Corp" style={inputStyle} />
+          </Field>
+        </div>
+
+        {/* OJT settings */}
+        <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)', marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>OJT Hours</p>
+          <Field label="Required Hours" style={{ marginBottom: 0 }}>
+            <input type="number" value={reqHrs} onChange={(e) => setReqHrs(e.target.value)} min={1} max={9999} placeholder="486" style={inputStyle} />
+          </Field>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>Default: 486 hours (typical for Philippine OJT programs)</p>
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'var(--bg)', borderRadius: 10, border: '1.5px solid var(--border)' }}>
+            <div>
+              <p style={{ fontSize: 14, fontWeight: 600 }}>Paid Lunch Break</p>
+              <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
+                {settings.paidLunch ? 'Lunch hour is counted as work time' : '1 hour deducted on days with 5+ hrs logged'}
+              </p>
+            </div>
+            <button onClick={() => updateSettings({ paidLunch: !settings.paidLunch })}
+              style={{ position: 'relative', width: 46, height: 26, borderRadius: 13, flexShrink: 0,
+                background: settings.paidLunch ? 'var(--accent)' : 'var(--border)', transition: 'background 0.2s' }}>
+              <span style={{ position: 'absolute', top: 3, left: settings.paidLunch ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: 'white',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
+            </button>
+          </div>
+        </div>
+
+        {/* Accent color */}
+        <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)', marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>Accent Color</p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            {ACCENTS.map((c) =>
+            <button key={c} onClick={() => updateSettings({ accentColor: c })}
+            style={{ width: 36, height: 36, borderRadius: '50%', background: c, border: `3px solid ${settings.accentColor === c ? c : 'transparent'}`,
+              outline: `2px solid ${settings.accentColor === c ? c : 'transparent'}`, outlineOffset: 2, transition: 'all 0.15s', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {settings.accentColor === c && <Icon name="check" size={16} color="white" />}
+              </button>
+            )}
+            {/* Color wheel */}
+            {(() => {
+              const isCustom = !ACCENTS.includes(settings.accentColor);
+              return (
+                <label title="Custom color" style={{ position: 'relative', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', flexShrink: 0,
+                  background: 'conic-gradient(red 0deg, yellow 60deg, lime 120deg, cyan 180deg, blue 240deg, magenta 300deg, red 360deg)',
+                  border: `3px solid ${isCustom ? settings.accentColor : 'transparent'}`,
+                  outline: `2px solid ${isCustom ? settings.accentColor : 'transparent'}`,
+                  outlineOffset: 2, transition: 'all 0.15s', overflow: 'hidden',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <input type="color" value={settings.accentColor} onChange={e => updateSettings({ accentColor: e.target.value })}
+                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', padding: 0, border: 'none' }} />
+                  {isCustom
+                    ? <div style={{ width: 14, height: 14, borderRadius: '50%', background: settings.accentColor, border: '2px solid white', pointerEvents: 'none', zIndex: 1 }} />
+                    : <div style={{ width: 14, height: 14, borderRadius: '50%', background: 'rgba(255,255,255,0.85)', pointerEvents: 'none', zIndex: 1 }} />
+                  }
+                </label>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* Save */}
+        <button onClick={save} style={{ width: '100%', padding: 14, borderRadius: 10, marginBottom: 14,
+          background: saved ? 'var(--emerald)' : 'var(--accent)', color: 'white', fontWeight: 700, fontSize: 15, transition: 'background 0.3s',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <Icon name={saved ? 'check' : 'settings'} size={17} color="white" />
+          {saved ? 'Saved!' : 'Save Settings'}
+        </button>
+
+        {/* Export / Import */}
+        <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)', marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>Data Portability</p>
+          <button onClick={downloadCSV} disabled={records.length === 0}
+          style={{ width: '100%', padding: 13, borderRadius: 10, background: records.length === 0 ? 'var(--border)' : 'var(--accent-light)',
+            color: records.length === 0 ? 'var(--text3)' : 'var(--accent)', fontWeight: 600, fontSize: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: records.length === 0 ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+            <Icon name="csv" size={17} color={records.length === 0 ? 'var(--text3)' : 'var(--accent)'} />
+            Download CSV ({records.length} records)
+          </button>
+          <label style={{ width: '100%', padding: 13, borderRadius: 10, background: 'var(--accent-light)',
+            color: 'var(--accent)', fontWeight: 600, fontSize: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', marginBottom: 10, boxSizing: 'border-box' }}>
+            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            Import CSV
+            <input type="file" accept=".csv,text/csv" onChange={importCSV} style={{ display: 'none' }} />
+          </label>
+          <button onClick={downloadTemplate}
+          style={{ width: '100%', padding: 13, borderRadius: 10, background: 'var(--bg)',
+            color: 'var(--text2)', fontWeight: 600, fontSize: 14, border: '1.5px dashed var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
+            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/>
+            </svg>
+            Download Data Entry Template
+          </button>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8, textAlign: 'center' }}>Use the template to fill in your records, then import it here.</p>
+        </div>
+
+        {/* Danger zone */}
+        <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', border: '1px solid var(--border)' }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--rose)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 14 }}>Danger Zone</p>
+          <button onClick={() => setClearConfirm(true)}
+          style={{ width: '100%', padding: 13, borderRadius: 10, background: 'var(--rose-light)', color: 'var(--rose)', fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <Icon name="trash" size={17} color="var(--rose)" />
+            Clear All Data
+          </button>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8, textAlign: 'center' }}>This permanently deletes all records, activities, and photos.</p>
+        </div>
+      </div>
+
+      {clearConfirm && <Confirm msg="Clear all data?" sub="All records, activities, and photos will be permanently deleted." onOk={clearAll} onCancel={() => setClearConfirm(false)} okLabel="Clear Everything" />}
+    </div>);
+
+}
+
+// ─── Tweaks Panel ─────────────────────────────────────────────────────────────
+function TweaksPanel({ onClose, records, setRecords, setActs, setImages, settings, updateSettings }) {
+  const seed = () => {
+    const base = new Date(),samples = [];
+    for (let i = 20; i >= 1; i--) {
+      const d = new Date(base);d.setDate(d.getDate() - i);
+      if (d.getDay() === 0 || d.getDay() === 6) continue;
+      const key = d.toISOString().slice(0, 10);
+      const inT = new Date(d);inT.setHours(7 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 30), 0);
+      const outT = new Date(inT);outT.setHours(inT.getHours() + 8 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 30), 0);
+      samples.push({ date: key, id: Date.now() + i, manual: true, sessions: [{id: Date.now()+i+'_0', in: inT.toISOString(), out: outT.toISOString()}] });
+    }
+    setRecords((p) => {const ex = new Set(p.map((r) => r.date));return [...p, ...samples.filter((s) => !ex.has(s.date))];});
+  };
+  const clear = () => {setRecords([]);setActs({});setImages({});};
+  return (
+    <div style={{ position: 'fixed', bottom: 68, right: 14, zIndex: 400, background: 'var(--surface)', borderRadius: 'var(--r)', padding: '18px', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', width: 232 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <p style={{ fontWeight: 700, fontSize: 14 }}>Tweaks</p>
+        <button onClick={onClose} style={{ color: 'var(--text3)', fontSize: 18, lineHeight: 1 }}>×</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <button onClick={seed} style={{ padding: '9px 12px', borderRadius: 8, background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 600, fontSize: 13, textAlign: 'left' }}>+ Seed 14 days sample data</button>
+        <button onClick={clear} style={{ padding: '9px 12px', borderRadius: 8, background: 'var(--rose-light)', color: 'var(--rose)', fontWeight: 600, fontSize: 13, textAlign: 'left' }}>🗑 Clear all data</button>
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+          <p style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.5 }}>Change required hours &amp; accent color in <strong>Settings</strong>.</p>
+        </div>
+      </div>
+    </div>);
+
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+<template id="__bundler_thumbnail">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 56">
+  <rect width="80" height="56" fill="#3730a3"/>
+  <rect x="12" y="8" width="56" height="40" rx="7" fill="white" opacity="0.12"/>
+  <rect x="18" y="14" width="20" height="4" rx="2" fill="white" opacity="0.9"/>
+  <rect x="18" y="21" width="44" height="2" rx="1" fill="white" opacity="0.45"/>
+  <rect x="18" y="26" width="36" height="2" rx="1" fill="white" opacity="0.35"/>
+  <rect x="18" y="33" width="18" height="8" rx="4" fill="white" opacity="0.8"/>
+  <rect x="40" y="33" width="18" height="8" rx="4" fill="white" opacity="0.3"/>
+</svg>
+</template>
+</body>
+</html>
