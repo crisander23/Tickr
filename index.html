@@ -277,6 +277,16 @@ const Confirm = ({ msg, sub, onOk, onCancel, okLabel = 'Delete', okColor = 'var(
   </div>;
 
 
+// ─── Mood config ─────────────────────────────────────────────────────────────
+const MOODS = [
+  { id: 'great',    emoji: '😄', label: 'Great',    bg: '#dcfce7', c: '#16a34a' },
+  { id: 'good',     emoji: '🙂', label: 'Good',     bg: '#dbeafe', c: '#2563eb' },
+  { id: 'okay',     emoji: '😐', label: 'Okay',     bg: '#fef9c3', c: '#ca8a04' },
+  { id: 'rough',    emoji: '😩', label: 'Rough',    bg: '#ffedd5', c: '#ea580c' },
+  { id: 'stressed', emoji: '😤', label: 'Stressed', bg: '#ffe4e6', c: '#e11d48' },
+  { id: 'sick',     emoji: '🤒', label: 'Sick',     bg: '#f3e8ff', c: '#9333ea' },
+];
+
 // ─── useDesktop hook ─────────────────────────────────────────────────────────
 function useDesktop() {
   const [desk, setDesk] = useState(() => window.innerWidth >= 768);
@@ -445,15 +455,19 @@ function App() {
       return { ...r, sessions: getSessions(r).map(s => s.id === sessionId ? { ...s, in: newIn, out: newOut || null } : s) };
     }));
   }, []);
+  const [moods, setMoods] = useState(() => LS.get('ojt_moods', {}));
   const updateAct = useCallback((date, text) => setActs((p) => ({ ...p, [date]: text })), []);
+  const updateMood = useCallback((date, mood) => setMoods((p) => ({ ...p, [date]: mood })), []);
   const addImage = useCallback((date, b64) => setImages((p) => ({ ...p, [date]: [...(p[date] || []), b64] })), []);
   const removeImage = useCallback((date, idx) => setImages((p) => ({ ...p, [date]: (p[date] || []).filter((_, i) => i !== idx) })), []);
   const updateSettings = useCallback((s) => setSettings((p) => ({ ...p, ...s })), []);
 
+  useEffect(() => LS.set('ojt_moods', moods), [moods]);
+
   const desktop = useDesktop();
   const PAGES = { home: Home, logs: Logs, charts: Charts, settings: Settings };
   const Page = PAGES[screen] || Home;
-  const sharedProps = { screen, setScreen, records, totalHours, todayRec, timeIn, timeOut, addRecord, deleteRecord, addSession, deleteSession, editSession, activities, updateAct, images, addImage, removeImage, settings, updateSettings, desktop };
+  const sharedProps = { screen, setScreen, records, totalHours, todayRec, timeIn, timeOut, addRecord, deleteRecord, addSession, deleteSession, editSession, activities, updateAct, moods, updateMood, images, addImage, removeImage, settings, updateSettings, desktop };
 
   return (
     <div className="app-shell">
@@ -695,7 +709,7 @@ function ContributionChart({ records, paidLunch = true }) {
 }
 
 // ─── HOME ─────────────────────────────────────────────────────────────────────
-function Home({ records, totalHours, todayRec, timeIn, timeOut, addRecord, settings, setScreen, desktop }) {
+function Home({ records, totalHours, todayRec, timeIn, timeOut, addRecord, settings, setScreen, desktop, moods, updateMood }) {
   const now = new Date();
   const pct = Math.min(totalHours / settings.requiredHours * 100, 100);
   const remaining = Math.max(settings.requiredHours - totalHours, 0);
@@ -865,6 +879,58 @@ function Home({ records, totalHours, todayRec, timeIn, timeOut, addRecord, setti
     );
   })();
 
+  const MoodCard = (() => {
+    const todStr = todayKey();
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now); d.setDate(now.getDate() - (6 - i));
+      const key = d.toISOString().slice(0, 10);
+      const moodId = moods[key];
+      const mood = moodId ? MOODS.find(m => m.id === moodId) : null;
+      return { key, d, mood, isToday: key === todStr,
+        label: d.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2) };
+    });
+    const todayMood = moods[todStr] ? MOODS.find(m => m.id === moods[todStr]) : null;
+    const loggedCount = days.filter(d => d.mood).length;
+    return (
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--r)', padding: '16px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700 }}>Mood</h2>
+          <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>
+            {loggedCount === 0 ? 'Last 7 days' : `${loggedCount} of 7 logged`}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {days.map(day => (
+            <button key={day.key} onClick={() => setScreen('logs')}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                padding: '10px 4px 8px', borderRadius: 12, transition: 'all 0.15s',
+                background: day.isToday
+                  ? (day.mood ? day.mood.bg : 'var(--accent-light)')
+                  : day.mood ? day.mood.bg + '99' : 'var(--bg)',
+                border: day.isToday ? `2px solid ${day.mood ? day.mood.c : 'var(--accent)'}` : '2px solid transparent',
+                cursor: 'pointer' }}>
+              <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                color: day.mood ? day.mood.c : day.isToday ? 'var(--accent)' : 'var(--text3)' }}>{day.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 600,
+                color: day.mood ? day.mood.c : day.isToday ? 'var(--accent)' : 'var(--text3)' }}>{day.d.getDate()}</span>
+              <span style={{ fontSize: 20, lineHeight: 1, minHeight: 22 }}>
+                {day.mood ? day.mood.emoji : <span style={{ fontSize: 14, color: 'var(--border)' }}>·</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+        {!todayMood && (
+          <button onClick={() => setScreen('logs')}
+            style={{ marginTop: 12, width: '100%', padding: '9px', borderRadius: 10,
+              background: 'var(--bg)', border: '1.5px dashed var(--accent)',
+              color: 'var(--accent)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <span style={{ fontSize: 16 }}>😊</span> How are you feeling today?
+          </button>
+        )}
+      </div>
+    );
+  })();
+
   return (
     <div style={{ paddingBottom: 12 }} className="fade-in">
       {/* Header */}
@@ -915,7 +981,8 @@ function Home({ records, totalHours, todayRec, timeIn, timeOut, addRecord, setti
                 </div>
             }
           </div>
-          {/* Row 3: Contribution chart full width */}
+          {/* Row 3: Mood + Contribution chart */}
+          {MoodCard}
           <ContributionChart records={records} paidLunch={settings.paidLunch} />
         </div> :
 
@@ -931,6 +998,7 @@ function Home({ records, totalHours, todayRec, timeIn, timeOut, addRecord, setti
           )}
           <div style={{ margin: '16px 20px 0' }}>{SummaryCards}</div>
           <div style={{ margin: '16px 20px 0' }}>{WeekCard}</div>
+          <div style={{ margin: '16px 20px 0' }}>{MoodCard}</div>
           {EstCard && <div style={{ margin: '16px 20px 0' }}>{EstCard}</div>}
           <div style={{ margin: '16px 20px 24px' }}><ContributionChart records={records} paidLunch={settings.paidLunch} /></div>
         </>
@@ -940,7 +1008,7 @@ function Home({ records, totalHours, todayRec, timeIn, timeOut, addRecord, setti
 }
 
 // ─── LOGS ─────────────────────────────────────────────────────────────────────
-function LogDetail({ date, record, activities, updateAct, images, addImage, removeImage, addSession, deleteSession, editSession, deleteRecord, settings, desktop, onClose, setLightbox }) {
+function LogDetail({ date, record, activities, updateAct, moods, updateMood, images, addImage, removeImage, addSession, deleteSession, editSession, deleteRecord, settings, desktop, onClose, setLightbox }) {
   const [showAddSession, setShowAddSession] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
   const [confirmSession, setConfirmSession] = useState(null);
@@ -1009,6 +1077,25 @@ function LogDetail({ date, record, activities, updateAct, images, addImage, remo
             })}
           </div>
         )}
+      </div>
+      {/* Mood */}
+      <div>
+        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>How was your day?</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {MOODS.map(m => {
+            const isSel = moods[date] === m.id;
+            return (
+              <button key={m.id} onClick={() => updateMood(date, isSel ? null : m.id)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '10px 12px', borderRadius: 12, flex: 1, minWidth: 48,
+                  background: isSel ? m.bg : 'var(--bg)',
+                  border: `2px solid ${isSel ? m.c : 'var(--border)'}`,
+                  transition: 'all 0.15s' }}>
+                <span style={{ fontSize: 24, lineHeight: 1 }}>{m.emoji}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: isSel ? m.c : 'var(--text3)', letterSpacing: '0.02em' }}>{m.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
       {/* Notes */}
       <div>
@@ -1118,7 +1205,7 @@ function SwipeableRow({ onDelete, children }) {
   );
 }
 
-function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, editSession, images, addImage, removeImage, activities, updateAct, settings, desktop }) {
+function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, editSession, images, addImage, removeImage, activities, updateAct, moods, updateMood, settings, desktop }) {
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState(null);
   const [lightbox, setLightbox] = useState(null);
@@ -1196,6 +1283,7 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, edi
           const isWeekend = (i % 7 === 0) || (i % 7 === 6);
           const hasNotes = !!(activities[key] || '').trim();
           const photoCount = (images[key] || []).length;
+          const mood = moods[key] ? MOODS.find(m => m.id === moods[key]) : null;
 
           return (
             <button key={key}
@@ -1209,6 +1297,9 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, edi
                 cursor: isFuture ? 'default' : 'pointer',
                 transition: 'all 0.15s', position: 'relative', boxSizing: 'border-box'
               }}>
+              {mood && (
+                <span style={{ position: 'absolute', top: 3, right: 4, fontSize: 10, lineHeight: 1 }}>{mood.emoji}</span>
+              )}
               <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1,
                 color: isToday ? 'white' : sc ? sc.c : isWeekend ? 'var(--text2)' : 'var(--text)' }}>
                 {day}
@@ -1284,6 +1375,7 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, edi
           <div style={{ width: 320, flexShrink: 0 }}>
             {selected ? (
               <LogDetail date={selected} record={selectedRecord} activities={activities} updateAct={updateAct}
+                moods={moods} updateMood={updateMood}
                 images={images} addImage={addImage} removeImage={removeImage}
                 addSession={addSession} deleteSession={deleteSession} editSession={editSession} deleteRecord={deleteRecord}
                 settings={settings} desktop={true} onClose={() => setSelected(null)} setLightbox={setLightbox} />
@@ -1300,6 +1392,7 @@ function Logs({ records, deleteRecord, addRecord, addSession, deleteSession, edi
           {calGrid}
           {selected && (
             <LogDetail date={selected} record={selectedRecord} activities={activities} updateAct={updateAct}
+              moods={moods} updateMood={updateMood}
               images={images} addImage={addImage} removeImage={removeImage}
               addSession={addSession} deleteSession={deleteSession} editSession={editSession} deleteRecord={deleteRecord}
               settings={settings} desktop={false} onClose={() => setSelected(null)} setLightbox={setLightbox} />
